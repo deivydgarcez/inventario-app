@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Identidade Pontual Tecnologia -->
+    <color name="colorPrimary">#CC5B2A</color>
+    <color name="colorPrimaryDark">#A04520</color>
+    <color name="colorPrimaryLight">#FDEEE8</color>
+    <color name="colorAccent">#E07040</color>
+    <color name="colorPrimaryText">#3D3D3D</color>
+
+    <!-- Layout -->
+    <color name="screenBackground">#F5F5F5</color>
+    <color name="cardBackground">#FFFFFF</color>
+    <color name="dividerColor">#E0E0E0</color>
+    <color name="textSecondary">#757575</color>
+    <color name="headerTextSecondary">#FDDEC8</color>
+
+    <!-- Diferença de estoque -->
+    <color name="diffPositive">#2E7D32</color>
+    <color name="diffNegative">#C62828</color>
+</resources>

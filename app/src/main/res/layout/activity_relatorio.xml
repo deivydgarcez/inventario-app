@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/screenBackground"
+    android:fitsSystemWindows="true">
+
+    <!-- Toolbar com botão voltar (altura dinâmica para acomodar a status bar) -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
+
+    <!-- Barra de resumo -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@color/cardBackground"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp"
+        android:elevation="2dp">
+
+        <TextView
+            android:id="@+id/tvTotal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="0 itens bipados"
+            android:textSize="14sp"
+            android:textColor="@color/textSecondary"
+            android:gravity="center_vertical" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Lista de itens -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:clipToPadding="false" />
+
+    <!-- Botão Recontagem -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnRecontagem"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="8dp"
+        android:text="Iniciar Recontagem"
+        android:textSize="14sp"
+        android:enabled="false"
+        app:cornerRadius="10dp" />
+
+    <!-- Botão consolidar fixo no rodapé -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnConsolidar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="64dp"
+        android:text="Consolidar Inventário"
+        android:textSize="16sp"
+        android:enabled="false"
+        app:cornerRadius="10dp" />
+
+</LinearLayout>

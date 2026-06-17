@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- ═══════════════════ MODO CÂMERA ═══════════════════ -->
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Overlay escuro superior (câmera) -->
+    <View
+        android:id="@+id/cameraOverlayTop"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#99000000"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/scanFrame" />
+
+    <!-- Overlay escuro inferior (câmera) -->
+    <View
+        android:id="@+id/cameraOverlayBottom"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#99000000"
+        app:layout_constraintTop_toBottomOf="@+id/scanFrame"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+    <!-- Quadro de leitura centralizado -->
+    <View
+        android:id="@+id/scanFrame"
+        android:layout_width="260dp"
+        android:layout_height="170dp"
+        android:background="@drawable/scan_frame_border"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="0.42" />
+
+    <!-- Instrução câmera -->
+    <TextView
+        android:id="@+id/tvCameraInstruction"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="20dp"
+        android:text="Aponte para o código de barras"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:background="#66000000"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="6dp"
+        app:layout_constraintBottom_toTopOf="@id/scanFrame"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Linha de guia azul -->
+    <View
+        android:id="@+id/scanLine"
+        android:layout_width="0dp"
+        android:layout_height="2dp"
+        android:background="#FFCC5B2A"
+        android:alpha="0.9"
+        app:layout_constraintTop_toTopOf="@id/scanFrame"
+        app:layout_constraintStart_toStartOf="@id/scanFrame"
+        app:layout_constraintEnd_toEndOf="@id/scanFrame"
+        app:layout_constraintBottom_toBottomOf="@id/scanFrame"
+        app:layout_constraintVertical_bias="0.5" />
+
+    <!-- ═══════════════════ MODO BLUETOOTH ═══════════════════ -->
+
+    <LinearLayout
+        android:id="@+id/btModeLayout"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#EE1A1A1A"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:src="@drawable/ic_bluetooth_scan"
+            android:contentDescription="Bluetooth"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Leitor Bluetooth ativo"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Aperte o gatilho do leitor para bipar"
+            android:textColor="#AAAAAA"
+            android:textSize="14sp"
+            android:layout_marginBottom="32dp" />
+
+        <TextView
+            android:id="@+id/tvUltimoLido"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:background="#33FFFFFF"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════ ELEMENTOS COMUNS ═══════════════════ -->
+
+    <!-- Barra superior com voltar + nome depósito + trocar modo -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
+        android:background="#CC000000"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTrocarModo"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_gravity="end"
+            android:layout_marginEnd="4dp"
+            android:text="Bluetooth"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            app:strokeColor="#FFFFFF"
+            app:cornerRadius="18dp"
+            app:icon="@drawable/ic_bluetooth_scan"
+            app:iconTint="#FFFFFF"
+            app:iconSize="14dp" />
+
+    </androidx.appcompat.widget.Toolbar>
+
+    <!-- Mini-lista de itens bipados nesta sessão -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvScanned"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#E61A1A1A"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/tvStatus"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Status de busca (câmera e BT) -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#CC1A1A1A"
+        android:textColor="#FFFFFF"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="14dp"
+        android:textSize="15sp"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

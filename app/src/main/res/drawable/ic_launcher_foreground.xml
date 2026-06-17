@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Símbolo Pontual Tecnologia: triângulo play button com nós de rede -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Linha esquerda vertical: nó superior → nó inferior -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M28,24 L28,84" />
+
+    <!-- Linha diagonal superior: nó superior → nó direito -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M28,24 L84,54" />
+
+    <!-- Linha diagonal inferior: nó inferior → nó direito -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M28,84 L84,54" />
+
+    <!-- Linha horizontal: nó esquerdo-meio → nó direito -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M28,54 L84,54" />
+
+    <!-- Nó superior esquerdo -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,24 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+
+    <!-- Nó meio esquerdo -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,54 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+
+    <!-- Nó inferior esquerdo -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,84 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+
+    <!-- Nó direito (ponta do play button) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M84,54 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+
+</vector>
