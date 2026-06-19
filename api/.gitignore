@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+env/
+venv/
+.venv/
+dist/
+build/
+
+# Segredos — NUNCA commitar
+.env
+*.env
+licenca_privada.pem
+gerar_licenca.py
+
+# Banco de dados
+*.FDB
+*.fdb
+*.gdb
+
+# Executáveis bundlados
+*.exe
+nssm.exe
+WinSW.exe
