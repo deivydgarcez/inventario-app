@@ -1,0 +1,12 @@
+# Arquivos de texto: normalizar quebras de linha
+* text=auto
+
+# Binarios: nunca converter quebras de linha
+*.pdf binary
+*.apk binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.jks binary
+*.keystore binary
