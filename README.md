@@ -60,8 +60,11 @@ O servidor roda no próprio computador da loja, sem dependência de internet. V�
 
 ## Documentação
 
-- [Manual de Instalação e Uso](docs/Invec_Manual.pdf) — como instalar o servidor e usar o app
-- [Documentação Técnica](docs/Invec_Tecnico.pdf) — arquitetura, endpoints e programação
+| Documento | Visualizar no GitHub | PDF |
+|---|---|---|
+| Instalação do servidor | [INSTALACAO.md](docs/INSTALACAO.md) | [Invec_Manual.pdf](docs/Invec_Manual.pdf) |
+| Manual de uso do app | [MANUAL_USO.md](docs/MANUAL_USO.md) | [Invec_Manual.pdf](docs/Invec_Manual.pdf) |
+| Documentação técnica | [MANUAL_TECNICO.md](docs/MANUAL_TECNICO.md) | [Invec_Tecnico.pdf](docs/Invec_Tecnico.pdf) |
 
 ---
 
