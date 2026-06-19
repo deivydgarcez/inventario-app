@@ -1,116 +1,67 @@
 # Invec — Inventário de Estoque Mobile
 
-Aplicativo Android para **contagem de estoque** integrado ao ERP Automec. Substitui planilhas e papéis: o operador bipa os produtos com o celular, o sistema compara com o estoque do Automec e consolida tudo com um toque.
+**Invec** é um sistema de contagem de estoque para lojas e distribuidoras que usam o ERP Automec. Com ele, a equipe realiza o inventário direto pelo celular — bipando os produtos com a câmera ou um leitor Bluetooth — e o sistema atualiza o Automec automaticamente ao final.
 
 Desenvolvido pela **Pontual Tecnologia**.
 
 ---
 
-## O problema que resolve
+## O que o Invec faz
 
-Fazer inventário no Automec tradicionalmente exige imprimir listas, anotar à mão e digitar tudo de volta no sistema — lento, sujeito a erro e sem rastreabilidade de quem fez o quê.
+### Contagem pelo celular
+O operador abre o app, seleciona o depósito e começa a bipar os produtos. Cada leitura soma a quantidade no sistema. Se o mesmo produto for bipado várias vezes, o sistema acumula corretamente. Não precisa de papel, planilha nem digitação posterior.
 
-O Invec resolve isso colocando um leitor de código de barras no bolso do operador. Ele bipa os produtos direto no celular, vê em tempo real o que diverge do sistema e, ao final, consolida com um toque. O Automec é atualizado automaticamente, sem redigitação.
+### Comparação em tempo real com o estoque
+Enquanto a contagem acontece, o app mostra para cada produto:
+- Quanto tem no sistema (Automec)
+- Quanto foi contado
+- A diferença
 
----
+Se a quantidade bipada parecer muito acima do esperado, o app avisa o operador na hora.
 
-## Como funciona
+### Recontagem antes de fechar
+Quando há diferenças significativas, o app sugere uma segunda contagem para confirmar os valores. O operador bipa novamente os produtos divergentes e o sistema compara as duas contagens. Se mais de 30% dos itens divergirem, a recontagem é obrigatória.
 
-### 1. Configuração inicial (uma vez só)
-O servidor roda no computador da empresa onde o Automec está instalado. O app só precisa do IP desse computador para conectar via Wi-Fi.
+### Consolidação com autorização
+Ao consolidar, os dados são gravados no Automec e o estoque é atualizado automaticamente. Quando há divergências, um **supervisor** (gerente ou administrador) precisa autorizar com login e senha — evitando que inventários com erros sejam fechados sem revisão.
 
-### 2. Login
-O usuário entra com o login e senha do Automec. O sistema suporta múltiplos usuários com níveis de acesso (operador, gerente, administrador).
+### Auditoria completa
+Toda operação fica registrada: quem fez, quando, com qual dispositivo e o motivo de cada edição ou exclusão. Gerentes e administradores podem consultar o histórico completo de qualquer depósito.
 
-### 3. Seleção de depósito e operador
-Escolha qual depósito será inventariado e quem está fazendo a coleta física. Isso fica registrado em cada bipagem para fins de auditoria.
-
-### 4. Bipagem dos produtos
-Aponte a câmera do celular para o código de barras — ou use um leitor Bluetooth. O sistema soma as quantidades automaticamente se o mesmo produto for bipado mais de uma vez.
-
-```
-Bipa produto A  →  1 un
-Bipa produto A  →  2 un  (soma, não duplica)
-Bipa produto B  →  1 un
-```
-
-Se a quantidade parecer absurda (mais de 2× o estoque do sistema), o app avisa na hora.
-
-### 5. Relatório em tempo real
-A qualquer momento, acesse o relatório e veja:
-
-| Produto | Sistema | Contada | Dif |
-|---|---|---|---|
-| Filtro de ar | 10 | 12 | **+2** |
-| Correia dentada | 5 | 3 | **-2** |
-| Vela de ignição | 8 | 8 | 0 |
-
-Itens com divergência ficam marcados. É possível editar ou remover qualquer item — tudo registrado em log com motivo obrigatório.
-
-### 6. Recontagem (quando há divergências)
-Antes de consolidar, o sistema recomenda uma segunda contagem dos itens divergentes. O operador bipa novamente e o app compara as duas contagens, mostrando o que mudou.
-
-Se mais de 30% dos itens divergirem, a recontagem é **obrigatória** antes de consolidar.
-
-### 7. Consolidação
-Confirmar a consolidação grava tudo no Automec (`MOV_PRODUTO`, tipo inventário). O estoque é atualizado automaticamente pelo próprio trigger do Automec.
-
-Quando há divergências, é exigida a **autorização de um supervisor** (gerente ou admin) com login e senha separados — garantindo que nenhum operador consolide um inventário problemático sozinho.
+### Funciona em rede local
+O servidor roda no próprio computador da loja, sem dependência de internet. Vários celulares podem trabalhar em paralelo no mesmo inventário.
 
 ---
 
-## Segurança e rastreabilidade
+## Telas do app
 
-Toda operação é registrada no log de auditoria:
-
-- **Quem** fez (usuário logado)
-- **Quando** (data e hora)
-- **Com qual dispositivo** (ID único do celular)
-- **O que foi feito** (bipagem, edição, exclusão, consolidação)
-- **Motivo** (obrigatório para edições e exclusões)
-
-O sistema detecta automaticamente padrões suspeitos, como um produto excluído e re-escaneado na mesma sessão, e registra alertas no log.
+| Tela | Função |
+|---|---|
+| Login | Autenticação com usuário do Automec |
+| Início | Seleção de depósito e operador |
+| Scanner | Bipagem com câmera ou leitor Bluetooth |
+| Relatório | Visualização e edição dos itens contados |
+| Recontagem | Segunda contagem dos itens com divergência |
+| Histórico | Inventários anteriores consolidados |
+| Auditoria | Log completo de operações (gerentes/admins) |
+| Operadores | Cadastro de operadores de coleta |
+| Usuários | Gerenciamento de acesso mobile |
 
 ---
 
-## Arquitetura
+## Para quem é
 
-```
-[Celular Android]  ──Wi-Fi──  [InvecServidor.exe]  ──  [Firebird / Automec]
-     App Kotlin                  FastAPI + Python           banco .FDB
-```
-
-O servidor roda como serviço Windows (`InvecAPI`) no mesmo computador do Automec. Vários celulares podem trabalhar simultaneamente no mesmo depósito.
+- Lojas e distribuidoras que usam o **Automec** como ERP
+- Equipes que fazem inventário periódico (mensal, trimestral ou anual)
+- Operações com **um ou mais depósitos**
+- Times com **múltiplos operadores** trabalhando em paralelo
 
 ---
 
 ## Documentação
 
-- [Guia de Instalação do Servidor](docs/INSTALACAO.md) — como instalar o `Instalar-Invec.exe` no Windows
-- [Manual de Uso do App](docs/MANUAL_USO.md) — passo a passo para o usuário final
-- [Documentação Técnica do Backend](api/README.md) — endpoints, banco de dados, segurança
-
----
-
-## Build
-
-### Servidor Windows
-
-```powershell
-cd api
-pyinstaller servidor.spec --clean --noconfirm
-# → api/dist/InvecServidor.exe
-
-pyinstaller instalador.spec --clean --noconfirm
-# → api/dist/Instalar-Invec.exe  (este vai para o cliente)
-```
-
-### App Android
-
-```powershell
-.\gradlew assembleRelease
-# → app/build/outputs/apk/release/app-release.apk
-```
+- [Manual de Instalação e Uso](docs/Invec_Manual.pdf) — como instalar o servidor e usar o app
+- [Documentação Técnica](docs/Invec_Tecnico.pdf) — arquitetura, endpoints e programação
 
 ---
 
@@ -118,13 +69,7 @@ pyinstaller instalador.spec --clean --noconfirm
 
 ```
 inventario-app/
-├── api/              ← Backend FastAPI (Python)
-├── app/              ← App Android (Kotlin)
-└── docs/
-    ├── INSTALACAO.md
-    └── MANUAL_USO.md
+├── api/    ← Backend FastAPI (Python) — compila para InvecServidor.exe
+├── app/    ← App Android (Kotlin)
+└── docs/   ← Documentação PDF
 ```
-
----
-
-> **Nota de segurança:** Os arquivos `api/licenca_privada.pem`, `api/gerar_licenca.py` e `C:\Invec\.env` nunca devem ser commitados ou distribuídos.
