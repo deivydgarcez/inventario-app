@@ -41,7 +41,7 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Invec - Instalador do Servidor")
-        self.root.geometry("600x490")
+        self.root.geometry("600x550")
         self.root.resizable(False, False)
         self.root.configure(bg="#F5F5F5")
 
@@ -51,6 +51,7 @@ class App:
         self.v_user    = tk.StringVar(value="SYSDBA")
         self.v_pass    = tk.StringVar(value="masterkey")
         self.v_port    = tk.StringVar(value="8000")
+        self.v_license = tk.StringVar()
         self.v_status  = tk.StringVar(value="Aguardando...")
 
         self._build_ui()
@@ -112,6 +113,18 @@ class App:
         ttk.Entry(f, textvariable=self.v_port, width=8).grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
         r += 1
 
+        ttk.Separator(f, orient=tk.HORIZONTAL).grid(row=r, column=0, columnspan=2, sticky=tk.EW, pady=6)
+        r += 1
+
+        row_label(r, "Chave de Licenca:", bold=True)
+        ttk.Entry(f, textvariable=self.v_license, width=42).grid(row=r, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
+        r += 1
+
+        ttk.Label(f, text="Fornecida pela Pontual Tecnologia. Necessaria para o servidor funcionar.",
+                  font=("Segoe UI", 8), foreground="#888").grid(
+            row=r, column=1, sticky=tk.W, padx=(8, 0))
+        r += 1
+
         ttk.Separator(f, orient=tk.HORIZONTAL).grid(row=r, column=0, columnspan=2, sticky=tk.EW, pady=8)
         r += 1
 
@@ -164,6 +177,7 @@ class App:
                     'FB_USER':     self.v_user,
                     'FB_PASSWORD': self.v_pass,
                     'PORT':        self.v_port,
+                    'LICENSE_KEY': self.v_license,
                 }
                 if k in mapping:
                     mapping[k].set(v)
@@ -190,6 +204,7 @@ class App:
                 f"FB_USER={self.v_user.get()}\n"
                 f"FB_PASSWORD={self.v_pass.get()}\n"
                 f"PORT={self.v_port.get()}\n"
+                f"LICENSE_KEY={self.v_license.get()}\n"
             )
 
     def _locate_nssm(self, install_dir: str) -> str | None:
@@ -246,6 +261,9 @@ class App:
     def _on_install(self):
         if not self.v_db.get():
             messagebox.showerror("Erro", "Selecione o caminho do banco de dados Firebird (.FDB).")
+            return
+        if not self.v_license.get().strip():
+            messagebox.showerror("Erro", "Informe a Chave de Licenca.\n\nSolicite a chave para a Pontual Tecnologia.")
             return
         if not is_admin():
             messagebox.showerror(
