@@ -25,6 +25,13 @@ class LoginActivity : AppCompatActivity() {
 
         session = SessionManager(this)
 
+        if (intent.getBooleanExtra("timeout", false)) {
+            Toast.makeText(this, "Sessão encerrada por inatividade", Toast.LENGTH_LONG).show()
+        }
+        if (intent.getBooleanExtra("session_expired", false)) {
+            Toast.makeText(this, "Sessão expirada. Faça login novamente.", Toast.LENGTH_LONG).show()
+        }
+
         if (session.isLoggedIn()) {
             goToMain()
             return
@@ -61,10 +68,19 @@ class LoginActivity : AppCompatActivity() {
                 val response = api.login(LoginRequest(login, senha))
                 if (response.isSuccessful) {
                     val body = response.body()!!
-                    session.saveLogin(body.accessToken, body.usuario, body.nome)
+                    session.saveLogin(body.accessToken, body.usuario, body.nome, body.role, body.mobileAdmin)
                     goToMain()
                 } else {
-                    Toast.makeText(this@LoginActivity, "Login ou senha inválidos", Toast.LENGTH_SHORT).show()
+                    val msg = if (response.code() == 401) {
+                        "Login ou senha inválidos"
+                    } else {
+                        try {
+                            org.json.JSONObject(response.errorBody()?.string() ?: "").getString("detail")
+                        } catch (_: Exception) {
+                            "Erro ao fazer login (${response.code()})"
+                        }
+                    }
+                    Toast.makeText(this@LoginActivity, msg, Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@LoginActivity, "Erro ao conectar: ${e.message}", Toast.LENGTH_LONG).show()

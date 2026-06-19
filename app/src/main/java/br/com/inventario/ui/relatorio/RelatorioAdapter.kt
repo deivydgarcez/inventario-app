@@ -37,7 +37,7 @@ class RelatorioAdapter(
         val item = items[position]
         with(holder.binding) {
             tvProduto.text = item.produto
-            tvCodigo.text = item.codigobarra ?: "—"
+            tvCodigo.text = item.codigobarra ?: "sem código"
             tvSistema.text = "Sistema: ${item.qtde_sistema?.let { "%.2f".format(it) } ?: "N/D"}"
             tvContada.text = "Contada: ${item.qtde_contada?.let { "%.2f".format(it) } ?: "0"}"
             val dif = item.diferenca ?: 0.0
@@ -47,7 +47,10 @@ class RelatorioAdapter(
                 dif < 0 -> Color.parseColor("#C62828")
                 else    -> Color.parseColor("#555555")
             })
-            root.setOnClickListener { onEdit(item, holder.adapterPosition) }
+            root.setOnClickListener {
+                val pos = holder.adapterPosition
+                if (pos != RecyclerView.NO_POSITION) onEdit(item, pos)
+            }
         }
     }
 }

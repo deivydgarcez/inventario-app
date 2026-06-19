@@ -1,29 +1,43 @@
 package br.com.inventario.ui.recontagem
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
+import br.com.inventario.ui.base.TimeoutActivity
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import br.com.inventario.R
 import br.com.inventario.data.api.RetrofitClient
 import br.com.inventario.data.model.EditarBipagemRequest
 import br.com.inventario.data.model.ItemRelatorio
 import br.com.inventario.databinding.ActivityRecontagemBinding
 import br.com.inventario.databinding.ItemRecontagemBinding
 import br.com.inventario.util.SessionManager
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
-class RecontagemActivity : AppCompatActivity() {
+class RecontagemActivity : TimeoutActivity() {
 
     private enum class ScanMode { CAMERA, BLUETOOTH }
 
@@ -31,10 +45,15 @@ class RecontagemActivity : AppCompatActivity() {
     private lateinit var session: SessionManager
     private var scanMode = ScanMode.BLUETOOTH
 
+    private lateinit var cameraExecutor: ExecutorService
+    private var cameraProvider: ProcessCameraProvider? = null
+
     private val btBuffer = StringBuilder()
     private var btLastKeyTime = 0L
     private val BT_TIMEOUT_MS = 150L
-    private var processando = false
+
+    @Volatile private var processando = false
+    @Volatile private var aguardandoScan = false
 
     data class ItemRecontagem(
         val item: ItemRelatorio,
@@ -51,34 +70,157 @@ class RecontagemActivity : AppCompatActivity() {
         binding = ActivityRecontagemBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-
         session = SessionManager(this)
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.title = "Recontagem — ${session.getNomeDeposito()}"
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        cameraExecutor = Executors.newSingleThreadExecutor()
 
-        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { v, insets ->
-            val top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            v.setPadding(v.paddingLeft, top, v.paddingRight, v.paddingBottom)
-            insets
-        }
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.title = "Recontagem: ${session.getNomeDeposito()}"
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         adapter = RecontagemAdapter(itens)
         binding.recycler.layoutManager = LinearLayoutManager(this)
         binding.recycler.adapter = adapter
 
-        binding.btnModo.setOnClickListener { alternarModo() }
+        binding.btnModo.setOnClickListener { mostrarSeletorModo() }
         binding.btnFinalizar.setOnClickListener { finalizarRecontagem() }
+        binding.btnEscanear.setOnClickListener { iniciarScan() }
+        binding.btnDigitarCodigo.setOnClickListener { digitarManualmente() }
+        binding.switchMultiplo.setOnCheckedChangeListener { _, checked ->
+            if (checked && !aguardandoScan && !processando && scanMode == ScanMode.CAMERA) {
+                iniciarScan()
+            }
+        }
+
+        val modoSalvo = session.getScanMode()
+        aplicarModo(if (modoSalvo == "CAMERA") ScanMode.CAMERA else ScanMode.BLUETOOTH)
 
         carregarItens()
     }
 
-    private fun alternarModo() {
-        scanMode = if (scanMode == ScanMode.BLUETOOTH) ScanMode.CAMERA else ScanMode.BLUETOOTH
-        binding.btnModo.text = if (scanMode == ScanMode.BLUETOOTH) "BT" else "Câmera"
-        val modoStr = if (scanMode == ScanMode.BLUETOOTH) "Bluetooth" else "Câmera"
-        Toast.makeText(this, "Modo: $modoStr", Toast.LENGTH_SHORT).show()
+    private fun mostrarSeletorModo() {
+        AlertDialog.Builder(this)
+            .setTitle("Modo de leitura")
+            .setItems(arrayOf("Câmera do celular", "Leitor Bluetooth")) { _, which ->
+                aplicarModo(if (which == 0) ScanMode.CAMERA else ScanMode.BLUETOOTH)
+            }
+            .setCancelable(true)
+            .show()
+    }
+
+    private fun aplicarModo(modo: ScanMode) {
+        scanMode = modo
+        session.saveScanMode(modo.name)
+
+        if (modo == ScanMode.CAMERA) {
+            binding.btnModo.text = "Câmera"
+            binding.cameraContainer.visibility = View.VISIBLE
+            binding.btnEscanear.visibility = View.VISIBLE
+            binding.switchRow.visibility = View.VISIBLE
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                iniciarCamera()
+            } else {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 101)
+            }
+        } else {
+            aguardandoScan = false
+            cameraProvider?.unbindAll()
+            binding.cameraContainer.visibility = View.GONE
+            binding.btnEscanear.visibility = View.GONE
+            binding.switchRow.visibility = View.GONE
+            binding.btnModo.text = "BT"
+            btBuffer.clear()
+            resetarBotaoEscanear()
+        }
+    }
+
+    private fun iniciarScan() {
+        if (processando) return
+        aguardandoScan = true
+        binding.btnEscanear.isEnabled = false
+        binding.btnEscanear.text = "Aguardando..."
+        binding.tvStatus.text = "Aponte a câmera para o código de barras"
+
+        lifecycleScope.launch {
+            delay(6000)
+            if (aguardandoScan) {
+                aguardandoScan = false
+                runOnUiThread { resetarBotaoEscanear() }
+            }
+        }
+    }
+
+    private fun resetarBotaoEscanear() {
+        binding.btnEscanear.isEnabled = true
+        binding.btnEscanear.text = "Escanear"
+        if (!processando) atualizarStatus()
+    }
+
+    private fun iniciarCamera() {
+        val future = ProcessCameraProvider.getInstance(this)
+        future.addListener({
+            cameraProvider = future.get()
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(binding.previewView.surfaceProvider)
+            }
+            val analysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .also { it.setAnalyzer(cameraExecutor) { img -> processarImagem(img) } }
+
+            cameraProvider?.unbindAll()
+            cameraProvider?.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    @androidx.annotation.OptIn(ExperimentalGetImage::class)
+    private fun processarImagem(imageProxy: ImageProxy) {
+        if (!aguardandoScan || processando || scanMode != ScanMode.CAMERA) {
+            imageProxy.close()
+            return
+        }
+
+        val mediaImage = imageProxy.image ?: run { imageProxy.close(); return }
+        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+
+        BarcodeScanning.getClient()
+            .process(image)
+            .addOnSuccessListener { barcodes ->
+                val codigo = barcodes.firstOrNull { it.rawValue != null }?.rawValue
+                if (codigo != null && aguardandoScan && !processando) {
+                    aguardandoScan = false
+                    processando = true
+                    runOnUiThread {
+                        binding.tvStatus.text = "Buscando: $codigo..."
+                        buscarERegistrar(codigo)
+                    }
+                }
+            }
+            .addOnCompleteListener { imageProxy.close() }
+    }
+
+    private fun digitarManualmente() {
+        val input = EditText(this).apply {
+            hint = "Digite o código de barras"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setPadding(48, 32, 48, 32)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Código manual")
+            .setView(input)
+            .setPositiveButton("Buscar") { _, _ ->
+                val codigo = input.text.toString().trim()
+                if (codigo.length >= 3 && !processando) {
+                    processando = true
+                    binding.tvStatus.text = "Buscando: $codigo..."
+                    buscarERegistrar(codigo)
+                } else if (codigo.isNotEmpty() && codigo.length < 3) {
+                    Toast.makeText(this, "Código muito curto", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private fun carregarItens() {
@@ -102,6 +244,7 @@ class RecontagemActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this@RecontagemActivity, "Erro ao carregar itens", Toast.LENGTH_SHORT).show()
                 }
+            } catch (_: CancellationException) {
             } catch (e: Exception) {
                 Toast.makeText(this@RecontagemActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
@@ -117,7 +260,7 @@ class RecontagemActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) {
+        if (scanMode == ScanMode.BLUETOOTH && event.action == KeyEvent.ACTION_DOWN) {
             val now = System.currentTimeMillis()
             if (now - btLastKeyTime > BT_TIMEOUT_MS) btBuffer.clear()
             btLastKeyTime = now
@@ -128,6 +271,7 @@ class RecontagemActivity : AppCompatActivity() {
                     btBuffer.clear()
                     if (codigo.length >= 3 && !processando) {
                         processando = true
+                        binding.tvStatus.text = "Buscando: $codigo..."
                         buscarERegistrar(codigo)
                     }
                     return true
@@ -142,7 +286,6 @@ class RecontagemActivity : AppCompatActivity() {
     }
 
     private fun buscarERegistrar(codigo: String) {
-        binding.tvStatus.text = "Buscando: $codigo…"
         lifecycleScope.launch {
             try {
                 val idx = barcodeMap[codigo]
@@ -163,11 +306,21 @@ class RecontagemActivity : AppCompatActivity() {
                         Toast.makeText(this@RecontagemActivity, "Produto não encontrado: $codigo", Toast.LENGTH_SHORT).show()
                     }
                 }
+            } catch (_: CancellationException) {
             } catch (e: Exception) {
                 Toast.makeText(this@RecontagemActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
+                if (scanMode == ScanMode.CAMERA) delay(200)
                 processando = false
-                atualizarStatus()
+                runOnUiThread {
+                    resetarBotaoEscanear()
+                    if (binding.switchMultiplo.isChecked && scanMode == ScanMode.CAMERA) {
+                        lifecycleScope.launch {
+                            delay(600)
+                            if (!processando) runOnUiThread { iniciarScan() }
+                        }
+                    }
+                }
             }
         }
     }
@@ -177,9 +330,11 @@ class RecontagemActivity : AppCompatActivity() {
         adapter.notifyItemChanged(idx)
         val item = itens[idx]
         val dif = item.qtde2 - (item.item.qtde_contada ?: 0.0)
-        val msg = "${item.item.produto} → 2ª: ${"%.0f".format(item.qtde2)}" +
-                if (abs(dif) > 0.001) " ⚠ Dif: ${"%.2f".format(dif)}" else " ✓"
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        val difStr = if (abs(dif) > 0.001) "  ⚠ Dif: ${"%.0f".format(dif)}" else "  ✓ Confere"
+        binding.lastScanPanel.visibility = View.VISIBLE
+        binding.tvLastScanNome.text = item.item.produto
+        binding.tvLastScanInfo.text = "2ª contagem: ${"%.0f".format(item.qtde2)} un.$difStr"
+        binding.recycler.scrollToPosition(idx)
     }
 
     private fun finalizarRecontagem() {
@@ -195,34 +350,103 @@ class RecontagemActivity : AppCompatActivity() {
         val matches = itens.count { it.qtde2 > 0 && abs(it.qtde2 - (it.item.qtde_contada ?: 0.0)) <= 0.001 }
 
         val msg = buildString {
-            append("Resultado da recontagem:\n\n")
-            append("• $matches itens conferidos (✓ sem divergência)\n")
+            append("$matches itens conferidos sem divergência.\n")
             if (divergencias.isNotEmpty()) {
-                append("• ${divergencias.size} itens com divergência:\n")
+                append("${divergencias.size} itens com divergência:\n\n")
                 divergencias.take(5).forEach {
                     val dif = it.qtde2 - (it.item.qtde_contada ?: 0.0)
-                    append("  - ${it.item.produto}: 1ª=${"%.0f".format(it.item.qtde_contada)}, 2ª=${"%.0f".format(it.qtde2)} (${if (dif > 0) "+" else ""}${"%.0f".format(dif)})\n")
+                    append("  ${it.item.produto}: 1a=${"%.0f".format(it.item.qtde_contada)}, 2a=${"%.0f".format(it.qtde2)} (${if (dif > 0) "+" else ""}${"%.0f".format(dif)})\n")
                 }
-                if (divergencias.size > 5) append("  ... e mais ${divergencias.size - 5} itens\n")
-                append("\nDeseja aplicar os valores da 2ª contagem para os itens divergentes?")
+                if (divergencias.size > 5) append("  ...e mais ${divergencias.size - 5} itens\n")
             } else {
-                append("\nTodos os itens conferem. Pode consolidar com segurança!")
+                append("\nTodas as contagens conferem!")
             }
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Resultado da Recontagem")
-            .setMessage(msg)
-            .apply {
-                if (divergencias.isNotEmpty()) {
-                    setPositiveButton("Aplicar 2ª contagem") { _, _ -> aplicarRecontagem(divergencias) }
-                    setNeutralButton("Manter 1ª contagem") { _, _ -> finish() }
-                } else {
-                    setPositiveButton("Voltar ao relatório") { _, _ -> finish() }
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_resultado_recontagem, null)
+        view.findViewById<android.widget.TextView>(R.id.tvMensagemResultado).text = msg
+
+        var dialog: AlertDialog? = null
+
+        if (divergencias.isNotEmpty()) {
+            // Aplicar 2ª contagem e já consolidar — ação principal
+            view.findViewById<MaterialButton>(R.id.btnConsolidarAgora).apply {
+                visibility = View.VISIBLE
+                setOnClickListener {
+                    dialog?.dismiss()
+                    aplicarRecontagemEConsolidar(divergencias)
                 }
             }
-            .setNegativeButton("Continuar recontando", null)
-            .show()
+            // Aplicar 2ª contagem e voltar ao relatório
+            view.findViewById<MaterialButton>(R.id.btnAplicar2a).apply {
+                visibility = View.VISIBLE
+                setOnClickListener { aplicarRecontagem(divergencias); dialog?.dismiss() }
+            }
+            view.findViewById<MaterialButton>(R.id.btnManter1a).apply {
+                visibility = View.VISIBLE
+                setOnClickListener {
+                    session.setConsolidarBloqueado(session.getCdDeposito(), true)
+                    dialog?.dismiss()
+                    finish()
+                }
+            }
+        } else {
+            session.setConsolidarBloqueado(session.getCdDeposito(), false)
+            // Sem divergências: consolidar direto é a ação principal
+            view.findViewById<MaterialButton>(R.id.btnConsolidarAgora).apply {
+                visibility = View.VISIBLE
+                setOnClickListener {
+                    dialog?.dismiss()
+                    finalizarComConsolidar()
+                }
+            }
+            view.findViewById<MaterialButton>(R.id.btnVoltarRelatorio).apply {
+                visibility = View.VISIBLE
+                setOnClickListener { dialog?.dismiss(); finish() }
+            }
+        }
+
+        view.findViewById<MaterialButton>(R.id.btnContinuarRecontando).setOnClickListener {
+            dialog?.dismiss()
+        }
+
+        dialog = MaterialAlertDialogBuilder(this)
+            .setView(view)
+            .setCancelable(true)
+            .create()
+        dialog.show()
+    }
+
+    private fun finalizarComConsolidar() {
+        setResult(RESULT_OK, Intent().putExtra("consolidar_direto", true))
+        finish()
+    }
+
+    private fun aplicarRecontagemEConsolidar(divergencias: List<ItemRecontagem>) {
+        binding.progressBar.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            try {
+                val api = RetrofitClient.build(session)
+                var falhou = false
+                divergencias.forEach { item ->
+                    val resp = api.editarBipagem(
+                        item.item.cdproduto,
+                        EditarBipagemRequest(item.qtde2, session.getCdDeposito(), motivo = "Recontagem aplicada"),
+                    )
+                    if (!resp.isSuccessful) falhou = true
+                }
+                if (falhou) {
+                    Toast.makeText(this@RecontagemActivity, "Erro ao salvar alguns itens. Verifique e tente novamente.", Toast.LENGTH_LONG).show()
+                } else {
+                    session.setConsolidarBloqueado(session.getCdDeposito(), false)
+                    finalizarComConsolidar()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@RecontagemActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                binding.progressBar.visibility = View.GONE
+            }
+        }
     }
 
     private fun aplicarRecontagem(divergencias: List<ItemRecontagem>) {
@@ -234,16 +458,21 @@ class RecontagemActivity : AppCompatActivity() {
                 divergencias.forEach { item ->
                     val resp = api.editarBipagem(
                         item.item.cdproduto,
-                        EditarBipagemRequest(item.qtde2, session.getCdDeposito()),
+                        EditarBipagemRequest(item.qtde2, session.getCdDeposito(), motivo = "Recontagem aplicada"),
                     )
                     if (resp.isSuccessful) atualizados++
                 }
-                Toast.makeText(
-                    this@RecontagemActivity,
-                    "$atualizados itens atualizados com valores da recontagem",
-                    Toast.LENGTH_LONG,
-                ).show()
-                finish()
+                if (atualizados < divergencias.size) {
+                    Toast.makeText(
+                        this@RecontagemActivity,
+                        "Atenção: $atualizados de ${divergencias.size} itens atualizados. Tente novamente.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    session.setConsolidarBloqueado(session.getCdDeposito(), false)
+                    Toast.makeText(this@RecontagemActivity, "$atualizados itens atualizados", Toast.LENGTH_LONG).show()
+                    finish()
+                }
             } catch (e: Exception) {
                 Toast.makeText(this@RecontagemActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
@@ -252,9 +481,21 @@ class RecontagemActivity : AppCompatActivity() {
         }
     }
 
-    override fun onSupportNavigateUp(): Boolean {
-        finish()
-        return true
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 101 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            iniciarCamera()
+        } else {
+            Toast.makeText(this, "Permissão de câmera necessária", Toast.LENGTH_LONG).show()
+            aplicarModo(ScanMode.BLUETOOTH)
+        }
+    }
+
+    override fun onSupportNavigateUp(): Boolean { finish(); return true }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cameraExecutor.shutdown()
     }
 
     inner class RecontagemAdapter(private val lista: List<ItemRecontagem>) :
@@ -281,8 +522,8 @@ class RecontagemActivity : AppCompatActivity() {
                     tvStatus.setTextColor(if (ok) 0xFF2E7D32.toInt() else 0xFFC62828.toInt())
                     tvDiferenca.setTextColor(if (ok) 0xFF2E7D32.toInt() else 0xFFC62828.toInt())
                 } else {
-                    tvContagem2.text = "2ª: —"
-                    tvDiferenca.text = "—"
+                    tvContagem2.text = "2ª: ..."
+                    tvDiferenca.text = "..."
                     tvStatus.text = "·"
                     tvStatus.setTextColor(0xFF9E9E9E.toInt())
                     tvDiferenca.setTextColor(0xFF9E9E9E.toInt())

@@ -29,6 +29,10 @@
         <activity android:name=".ui.scanner.ScannerActivity" />
         <activity android:name=".ui.relatorio.RelatorioActivity" />
         <activity android:name=".ui.recontagem.RecontagemActivity" />
+        <activity android:name=".ui.historico.HistoricoActivity" />
+        <activity android:name=".ui.operadores.OperadoresActivity" />
+        <activity android:name=".ui.auditoria.AuditoriaActivity" />
+        <activity android:name=".ui.usuarios.UsuariosActivity" />
 
     </application>
 </manifest>

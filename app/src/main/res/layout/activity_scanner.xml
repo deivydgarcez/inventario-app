@@ -5,18 +5,17 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- ═══════════════════ MODO CÂMERA ═══════════════════ -->
-
+    <!-- Camera preview (fundo completo) -->
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/bottomPanel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Overlay escuro superior (câmera) -->
+    <!-- Overlay escuro superior -->
     <View
         android:id="@+id/cameraOverlayTop"
         android:layout_width="0dp"
@@ -27,7 +26,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@+id/scanFrame" />
 
-    <!-- Overlay escuro inferior (câmera) -->
+    <!-- Overlay escuro inferior -->
     <View
         android:id="@+id/cameraOverlayBottom"
         android:layout_width="0dp"
@@ -36,37 +35,21 @@
         app:layout_constraintTop_toBottomOf="@+id/scanFrame"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent" />
+        app:layout_constraintBottom_toTopOf="@+id/bottomPanel" />
 
     <!-- Quadro de leitura centralizado -->
     <View
         android:id="@+id/scanFrame"
-        android:layout_width="260dp"
-        android:layout_height="170dp"
+        android:layout_width="280dp"
+        android:layout_height="180dp"
         android:background="@drawable/scan_frame_border"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/bottomPanel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintVertical_bias="0.42" />
 
-    <!-- Instrução câmera -->
-    <TextView
-        android:id="@+id/tvCameraInstruction"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="20dp"
-        android:text="Aponte para o código de barras"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:background="#66000000"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="6dp"
-        app:layout_constraintBottom_toTopOf="@id/scanFrame"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- Linha de guia azul -->
+    <!-- Linha guia laranja -->
     <View
         android:id="@+id/scanLine"
         android:layout_width="0dp"
@@ -79,8 +62,23 @@
         app:layout_constraintBottom_toBottomOf="@id/scanFrame"
         app:layout_constraintVertical_bias="0.5" />
 
-    <!-- ═══════════════════ MODO BLUETOOTH ═══════════════════ -->
+    <!-- Instrucao camera (abaixo do quadro) -->
+    <TextView
+        android:id="@+id/tvCameraInstruction"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="Pressione ESCANEAR e aponte para o código"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:background="#66000000"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="6dp"
+        app:layout_constraintTop_toBottomOf="@id/scanFrame"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Modo Bluetooth -->
     <LinearLayout
         android:id="@+id/btModeLayout"
         android:layout_width="0dp"
@@ -89,17 +87,17 @@
         android:gravity="center"
         android:background="#EE1A1A1A"
         android:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintBottom_toTopOf="@+id/bottomPanel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
         <ImageView
-            android:layout_width="80dp"
-            android:layout_height="80dp"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
             android:src="@drawable/ic_bluetooth_scan"
             android:contentDescription="Bluetooth"
-            android:layout_marginBottom="24dp" />
+            android:layout_marginBottom="16dp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -108,32 +106,28 @@
             android:textColor="#FFFFFF"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginBottom="10dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Aperte o gatilho do leitor para bipar"
+            android:text="Aponte o leitor para o código de barras"
+            android:textColor="#DDDDDD"
+            android:textSize="15sp"
+            android:gravity="center"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="e pressione o gatilho do leitor"
             android:textColor="#AAAAAA"
-            android:textSize="14sp"
-            android:layout_marginBottom="32dp" />
-
-        <TextView
-            android:id="@+id/tvUltimoLido"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:visibility="gone"
-            android:background="#33FFFFFF"
-            android:textColor="#FFFFFF"
             android:textSize="13sp"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="8dp" />
+            android:gravity="center" />
 
     </LinearLayout>
 
-    <!-- ═══════════════════ ELEMENTOS COMUNS ═══════════════════ -->
-
-    <!-- Barra superior com voltar + nome depósito + trocar modo -->
+    <!-- Toolbar -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="0dp"
@@ -149,45 +143,176 @@
             android:id="@+id/btnTrocarModo"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="38dp"
             android:layout_gravity="end"
             android:layout_marginEnd="4dp"
             android:text="Bluetooth"
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             app:strokeColor="#FFFFFF"
-            app:cornerRadius="18dp"
+            app:cornerRadius="19dp"
             app:icon="@drawable/ic_bluetooth_scan"
             app:iconTint="#FFFFFF"
             app:iconSize="14dp" />
 
     </androidx.appcompat.widget.Toolbar>
 
-    <!-- Mini-lista de itens bipados nesta sessão -->
+    <!-- Mini-lista de itens bipados (acima do painel inferior) -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvScanned"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:background="#E61A1A1A"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@+id/tvStatus"
+        app:layout_constraintBottom_toTopOf="@+id/bottomPanel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Status de busca (câmera e BT) -->
-    <TextView
-        android:id="@+id/tvStatus"
+    <!-- Painel inferior fixo -->
+    <LinearLayout
+        android:id="@+id/bottomPanel"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="#CC1A1A1A"
-        android:textColor="#FFFFFF"
-        android:paddingHorizontal="20dp"
-        android:paddingVertical="14dp"
-        android:textSize="15sp"
-        android:gravity="center"
-        android:visibility="gone"
+        android:orientation="vertical"
+        android:background="#F0000000"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Ultimo item bipado -->
+        <LinearLayout
+            android:id="@+id/lastScanPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="10dp"
+            android:background="#22FFFFFF"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvLastScanNome"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:ellipsize="end"
+                android:maxLines="1" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="3dp">
+
+                <TextView
+                    android:id="@+id/tvLastScanQtd"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="#FFCC5B2A"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvScanCounter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#AAAAAA"
+                    android:textSize="13sp" />
+
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Status de busca / erro -->
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="10dp"
+            android:background="#33FFFFFF"
+            android:visibility="gone" />
+
+        <!-- Toggle múltiplas leituras (apenas modo câmera) -->
+        <LinearLayout
+            android:id="@+id/switchRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="4dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Múltiplas leituras seguidas"
+                android:textColor="#AAAAAA"
+                android:textSize="13sp" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchMultiplo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+        </LinearLayout>
+
+        <!-- Operador selecionado -->
+        <TextView
+            android:id="@+id/tvOperador"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Toque para selecionar operador"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:paddingHorizontal="20dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="2dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <!-- Botoes de acao -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEscanear"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="Escanear"
+                android:textSize="15sp"
+                app:cornerRadius="10dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDigitarCodigo"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:text="Digitar código"
+                android:textSize="14sp"
+                android:textColor="#FFFFFF"
+                app:strokeColor="#FFFFFF"
+                app:cornerRadius="10dp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

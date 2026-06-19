@@ -30,13 +30,18 @@ interface ApiService {
     @GET("inventario/relatorio/{cddeposito}")
     suspend fun relatorio(@Path("cddeposito") cddeposito: Int): Response<List<ItemRelatorio>>
 
+    @GET("inventario/resumo/{cddeposito}")
+    suspend fun resumoContagem(@Path("cddeposito") cddeposito: Int): Response<ResumoContagem>
+
     @POST("inventario/consolidar")
-    suspend fun consolidar(@Body body: Map<String, Int>): Response<Map<String, String>>
+    suspend fun consolidar(@Body body: ConsolidarRequest): Response<ConsolidarResponse>
 
     @DELETE("inventario/bipagem/{cdproduto}")
     suspend fun removerBipagem(
         @Path("cdproduto") cdproduto: Int,
         @Query("cddeposito") cddeposito: Int,
+        @Query("motivo") motivo: String? = null,
+        @Query("device_id") deviceId: String? = null,
     ): Response<Map<String, String>>
 
     @PUT("inventario/bipagem/{cdproduto}")
@@ -44,4 +49,31 @@ interface ApiService {
         @Path("cdproduto") cdproduto: Int,
         @Body body: EditarBipagemRequest,
     ): Response<Map<String, String>>
+
+    @GET("inventario/historico/{cddeposito}")
+    suspend fun historico(@Path("cddeposito") cddeposito: Int): Response<List<ItemHistorico>>
+
+    @GET("inventario/log/{cddeposito}")
+    suspend fun logAuditoria(@Path("cddeposito") cddeposito: Int): Response<List<LogAuditoria>>
+
+    @GET("operadores")
+    suspend fun listarOperadores(): Response<List<Operador>>
+
+    @POST("operadores")
+    suspend fun criarOperador(@Body body: OperadorRequest): Response<Operador>
+
+    @PUT("operadores/{id}/toggle")
+    suspend fun toggleOperador(@Path("id") id: Int): Response<Operador>
+
+    @GET("auth/usuarios")
+    suspend fun listarUsuariosMobile(): Response<List<UsuarioMobile>>
+
+    @PUT("auth/usuarios/{id}/senha-mobile")
+    suspend fun definirSenhaMobile(
+        @Path("id") id: Int,
+        @Body body: SenhaMobileRequest,
+    ): Response<Map<String, String>>
+
+    @PUT("auth/usuarios/{id}/toggle-admin")
+    suspend fun toggleAdminMobile(@Path("id") id: Int): Response<Map<String, Any>>
 }

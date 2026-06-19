@@ -48,6 +48,19 @@
             android:textColor="@color/headerTextSecondary"
             android:textSize="13sp" />
 
+        <TextView
+            android:id="@+id/tvOperadorAtual"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:paddingVertical="4dp"
+            android:text="Operador: nenhum selecionado (toque para definir)"
+            android:textColor="#FFEEEEEE"
+            android:textSize="12sp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true" />
+
     </LinearLayout>
 
     <!-- Actions area -->
@@ -72,21 +85,21 @@
             app:iconSize="22dp"
             app:cornerRadius="10dp" />
 
-        <!-- Iniciar Bipagem — botão principal, ocupa o espaço restante -->
+        <!-- Iniciar Coleta — botão principal, ocupa o espaço restante -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBipar"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:layout_marginBottom="16dp"
-            android:text="Iniciar Bipagem"
-            android:textSize="18sp"
+            android:text="Iniciar Coleta"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:enabled="false"
             app:icon="@drawable/ic_camera"
-            app:iconSize="44dp"
-            app:iconGravity="top"
-            app:iconPadding="14dp"
+            app:iconSize="28dp"
+            app:iconGravity="textStart"
+            app:iconPadding="12dp"
             app:cornerRadius="14dp" />
 
         <!-- Ver Relatório -->
@@ -95,6 +108,7 @@
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="56dp"
+            android:layout_marginBottom="12dp"
             android:text="Ver Relatório"
             android:textSize="15sp"
             android:enabled="false"
@@ -103,17 +117,73 @@
             app:iconSize="22dp"
             app:cornerRadius="10dp" />
 
+        <!-- Gerenciar Operadores -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOperadores"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginBottom="8dp"
+            android:text="Gerenciar Operadores"
+            android:textSize="14sp"
+            app:icon="@drawable/ic_person"
+            app:iconTint="?attr/colorPrimary"
+            app:iconSize="20dp"
+            app:cornerRadius="10dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnUsuarios"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Acesso Mobile — Usuários"
+            android:textSize="14sp"
+            android:visibility="gone"
+            app:icon="@drawable/ic_person"
+            app:iconTint="?attr/colorPrimary"
+            app:iconSize="20dp"
+            app:cornerRadius="10dp" />
+
     </LinearLayout>
 
-    <!-- Footer — margem generosa para não ficar sob a barra de navegação -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnSair"
-        style="@style/Widget.MaterialComponents.Button.TextButton"
+    <!-- Footer -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginBottom="56dp"
-        android:text="Sair da conta"
-        android:textColor="@color/textSecondary"
-        android:textSize="14sp" />
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="16dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSair"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginEnd="10dp"
+            android:text="Sair da conta"
+            android:textColor="@color/textSecondary"
+            android:textSize="13sp"
+            app:icon="@drawable/ic_logout"
+            app:iconTint="@color/textSecondary"
+            app:iconSize="18dp"
+            app:strokeColor="@color/textSecondary"
+            app:cornerRadius="22dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConfigurarServidor"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:text="Servidor"
+            android:textColor="@color/textSecondary"
+            android:textSize="13sp"
+            app:icon="@drawable/ic_settings"
+            app:iconTint="@color/textSecondary"
+            app:iconSize="16dp"
+            app:strokeColor="@color/textSecondary"
+            app:cornerRadius="22dp" />
+
+    </LinearLayout>
 
 </LinearLayout>

@@ -16,65 +16,214 @@
         android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
 
-    <!-- Cartão de status da recontagem -->
+    <!-- Camera direto abaixo da toolbar, sem nada entre eles -->
+    <FrameLayout
+        android:id="@+id/cameraContainer"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:background="#000000"
+        android:visibility="gone">
+
+        <androidx.camera.view.PreviewView
+            android:id="@+id/previewView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#33000000" />
+
+        <View
+            android:id="@+id/scanFrame"
+            android:layout_width="240dp"
+            android:layout_height="130dp"
+            android:layout_gravity="center"
+            android:background="@drawable/scan_frame_border" />
+
+        <View
+            android:layout_width="240dp"
+            android:layout_height="2dp"
+            android:layout_gravity="center"
+            android:background="#FFCC5B2A"
+            android:alpha="0.9" />
+
+    </FrameLayout>
+
+    <!-- Último item bipado -->
     <LinearLayout
+        android:id="@+id/lastScanPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="@color/cardBackground"
+        android:background="#FF1E1E1E"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp"
-        android:elevation="2dp">
+        android:paddingVertical="10dp"
+        android:gravity="center_vertical"
+        android:visibility="gone">
 
         <TextView
-            android:id="@+id/tvStatus"
+            android:layout_width="20dp"
+            android:layout_height="wrap_content"
+            android:text="✓"
+            android:textColor="#FF4CAF50"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="10dp" />
+
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Aguardando escaneamento…"
-            android:textSize="13sp"
-            android:textColor="@color/textSecondary" />
+            android:orientation="vertical">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnModo"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="BT"
-            android:textSize="12sp"
-            app:cornerRadius="18dp" />
+            <TextView
+                android:id="@+id/tvLastScanNome"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:ellipsize="end"
+                android:maxLines="1" />
 
-        <ProgressBar
-            android:id="@+id/progressBar"
-            style="?android:attr/progressBarStyleSmall"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_marginStart="8dp"
-            android:visibility="gone" />
+            <TextView
+                android:id="@+id/tvLastScanInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
-    <!-- Lista de itens para recontar -->
+    <!-- Lista de itens -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
         android:clipToPadding="false" />
 
-    <!-- Botão finalizar -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnFinalizar"
+    <!-- Painel de controle fixo no rodapé -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="64dp"
-        android:text="Finalizar Recontagem"
-        android:textSize="16sp"
-        app:cornerRadius="10dp" />
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@color/cardBackground"
+        android:elevation="8dp">
+
+        <!-- Status + modo + loading -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="6dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Carregando..."
+                android:textSize="13sp"
+                android:textColor="@color/textSecondary" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnModo"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:text="BT"
+                android:textSize="12sp"
+                app:cornerRadius="17dp" />
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="8dp"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+        <!-- Switch múltiplas leituras (só câmera) -->
+        <LinearLayout
+            android:id="@+id/switchRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="4dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Múltiplas leituras seguidas"
+                android:textColor="@color/textSecondary"
+                android:textSize="13sp" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchMultiplo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+        </LinearLayout>
+
+        <!-- Botões de leitura -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEscanear"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="Escanear"
+                android:textSize="14sp"
+                app:cornerRadius="10dp"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDigitarCodigo"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:text="Digitar código"
+                android:textSize="14sp"
+                app:cornerRadius="10dp" />
+
+        </LinearLayout>
+
+        <!-- Finalizar -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFinalizar"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginBottom="12dp"
+            android:text="Finalizar Recontagem"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:cornerRadius="10dp" />
+
+    </LinearLayout>
 
 </LinearLayout>
