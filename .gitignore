@@ -7,6 +7,8 @@ build/
 *.apk
 *.aab
 *.ap_
+# Excecao: APK de release para distribuicao
+!app/release/*.apk
 local.properties
 *.keystore
 *.jks
