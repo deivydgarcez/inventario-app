@@ -4,11 +4,14 @@ import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import br.com.inventario.data.api.RetrofitClient
+import br.com.inventario.data.db.InvecDatabase
 import br.com.inventario.ui.login.LoginActivity
 import br.com.inventario.util.SessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TIMEOUT_MS = 15 * 60 * 1000L  // 15 minutos
 
@@ -41,12 +44,14 @@ abstract class TimeoutActivity : AppCompatActivity() {
 
     open fun onSessionTimeout() {
         val session = SessionManager(this)
+        val db = InvecDatabase.getInstance(this)
         val sessionId = session.getSessionId()
         if (sessionId != null && br.com.inventario.util.ServerMonitor.isOnline.value) {
             val api = try { RetrofitClient.build(session) } catch (_: Exception) { null }
             if (api != null) {
                 lifecycleScope.launch {
                     try { kotlinx.coroutines.withTimeoutOrNull(3_000) { api.encerrarSessao(sessionId) } } catch (_: Exception) {}
+                    withContext(Dispatchers.IO) { db.bipag.deleteAllDaSessao(sessionId) }
                     session.logout()
                     RetrofitClient.reset()
                     startActivity(Intent(this@TimeoutActivity, LoginActivity::class.java).apply {
@@ -57,6 +62,19 @@ abstract class TimeoutActivity : AppCompatActivity() {
                 }
                 return
             }
+        }
+        if (sessionId != null) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { db.bipag.deleteAllDaSessao(sessionId) }
+                session.logout()
+                RetrofitClient.reset()
+                startActivity(Intent(this@TimeoutActivity, LoginActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    putExtra("timeout", true)
+                })
+                finish()
+            }
+            return
         }
         session.logout()
         RetrofitClient.reset()

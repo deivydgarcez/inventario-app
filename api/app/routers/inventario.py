@@ -401,15 +401,25 @@ def sincronizar_lote(
         with get_connection() as con:
             cur = con.cursor()
             cur.execute(
-                "SELECT COUNT(*) FROM INVENTARIO_SESSAO WHERE SESSION_ID = ?",
+                "SELECT STATUS FROM INVENTARIO_SESSAO WHERE SESSION_ID = ?",
                 (body.session_id,),
             )
-            if cur.fetchone()[0] == 0:
+            row = cur.fetchone()
+            if row:
+                status_sessao = (row[0] or "ABERTA").upper()
+                if status_sessao in ("ENCERRADA", "CONSOLIDADA"):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Sessão já está {status_sessao.lower()} — lote rejeitado para evitar dados fantasmas.",
+                    )
+            else:
                 cur.execute(
                     "INSERT INTO INVENTARIO_SESSAO (SESSION_ID, CDDEPOSITO, USUARIO, STATUS) "
                     "VALUES (?, ?, ?, 'ABERTA')",
                     (body.session_id, body.cddeposito, current_user.get("login", "")),
                 )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[lote] INVENTARIO_SESSAO upsert: {e}")
 

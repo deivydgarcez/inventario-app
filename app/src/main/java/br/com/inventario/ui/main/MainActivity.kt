@@ -234,6 +234,9 @@ class MainActivity : TimeoutActivity() {
             if (api != null) {
                 lifecycleScope.launch {
                     try { kotlinx.coroutines.withTimeoutOrNull(3_000) { api.encerrarSessao(sessionId) } } catch (_: Exception) {}
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        db.bipag.deleteAllDaSessao(sessionId)
+                    }
                     session.logout()
                     RetrofitClient.reset()
                     startActivity(Intent(this@MainActivity, LoginActivity::class.java))
@@ -241,6 +244,19 @@ class MainActivity : TimeoutActivity() {
                 }
                 return
             }
+        }
+        // Offline ou sem API: ainda limpa dados locais da sessão antes de encerrar
+        if (sessionId != null) {
+            lifecycleScope.launch {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    db.bipag.deleteAllDaSessao(sessionId)
+                }
+                session.logout()
+                RetrofitClient.reset()
+                startActivity(Intent(this@MainActivity, LoginActivity::class.java))
+                finish()
+            }
+            return
         }
         session.logout()
         RetrofitClient.reset()

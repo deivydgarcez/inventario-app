@@ -234,34 +234,43 @@ class RecontagemActivity : TimeoutActivity() {
         lifecycleScope.launch {
             try {
                 var carregouOnline = false
+                var erroHttp = false
                 try {
                     val api = RetrofitClient.build(session)
                     val resp = api.relatorio(session.getCdDeposito(), session.getSessionId())
                     if (resp.isSuccessful) {
                         popularItens(resp.body() ?: emptyList())
                         carregouOnline = true
+                    } else {
+                        // Servidor respondeu mas com erro HTTP — não é "offline", é erro de servidor
+                        erroHttp = true
                     }
                 } catch (_: Exception) {}
 
                 if (!carregouOnline) {
-                    val sid = session.getSessionId() ?: ""
-                    val lista = db.bipag.getRelatorioOffline(sid, session.getCdDeposito())
-                        .map { local ->
+                    if (erroHttp) {
+                        Toast.makeText(this@RecontagemActivity, "Erro ao carregar dados do servidor. Verifique e tente novamente.", Toast.LENGTH_LONG).show()
+                    } else {
+                        val sid = session.getSessionId() ?: ""
+                        val lista = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            db.bipag.getRelatorioOffline(sid, session.getCdDeposito())
+                        }.map { local ->
                             ItemRelatorio(
-                                cdproduto   = local.cdproduto,
-                                produto     = local.produto,
-                                codigobarra = local.codigobarra,
+                                cdproduto    = local.cdproduto,
+                                produto      = local.produto,
+                                codigobarra  = local.codigobarra,
                                 qtde_sistema = local.qtdeSistema,
                                 qtde_contada = local.qtdeContada,
-                                diferenca   = local.diferenca,
-                                operador    = local.operador,
+                                diferenca    = local.diferenca,
+                                operador     = local.operador,
                             )
                         }
-                    popularItens(lista)
-                    if (lista.isEmpty()) {
-                        Toast.makeText(this@RecontagemActivity, "Sem conexão e sem dados locais", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this@RecontagemActivity, "Offline — ${lista.size} itens do cache local", Toast.LENGTH_SHORT).show()
+                        popularItens(lista)
+                        if (lista.isEmpty()) {
+                            Toast.makeText(this@RecontagemActivity, "Sem conexão e sem dados locais", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this@RecontagemActivity, "Offline — ${lista.size} itens do cache local", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (_: CancellationException) {
