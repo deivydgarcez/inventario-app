@@ -233,7 +233,7 @@ class MainActivity : TimeoutActivity() {
             val api = try { RetrofitClient.build(session) } catch (_: Exception) { null }
             if (api != null) {
                 lifecycleScope.launch {
-                    try { api.encerrarSessao(sessionId) } catch (_: Exception) {}
+                    try { kotlinx.coroutines.withTimeoutOrNull(3_000) { api.encerrarSessao(sessionId) } } catch (_: Exception) {}
                     session.logout()
                     RetrofitClient.reset()
                     startActivity(Intent(this@MainActivity, LoginActivity::class.java))

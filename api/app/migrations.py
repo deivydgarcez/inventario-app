@@ -56,6 +56,7 @@ def run_migrations():
     _migrar_indice_log_tipo()
     _migrar_lotes_processados()
     _migrar_scans_processados()
+    _reset_sessoes_consolidando()
     _migrar_usuario_deposito()
     _migrar_log_data_hora_timestamp()
     _limpar_log_geral()
@@ -292,6 +293,20 @@ def _migrar_scans_processados():
                 )
     except Exception as e:
         print(f"[migration] SCANS_PROCESSADOS: {e}")
+
+
+def _reset_sessoes_consolidando():
+    """Reseta sessões presas em STATUS='CONSOLIDANDO' após restart do servidor.
+    Seguro: se o servidor acabou de iniciar, qualquer 'CONSOLIDANDO' é de uma consolidação que morreu no meio.
+    """
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "UPDATE INVENTARIO_SESSAO SET STATUS = 'ABERTA' WHERE STATUS = 'CONSOLIDANDO'"
+            )
+    except Exception as e:
+        print(f"[migration] reset CONSOLIDANDO: {e}")
 
 
 def _migrar_usuario_deposito():
