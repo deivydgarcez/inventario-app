@@ -43,8 +43,6 @@ def run_migrations():
     _migrar_coluna("INVENTARIO_SESSAO", "STATUS",   "ALTER TABLE INVENTARIO_SESSAO ADD STATUS VARCHAR(20) DEFAULT 'ABERTA'")
     _migrar_coluna("INVENTARIO_SESSAO", "INICIO",   "ALTER TABLE INVENTARIO_SESSAO ADD INICIO TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     _migrar_coluna("INVENTARIO_SESSAO", "FIM",      "ALTER TABLE INVENTARIO_SESSAO ADD FIM TIMESTAMP")
-    _migrar_indices_log()
-    _limpar_log_bipagem()
     _migrar_coluna(
         "USUARIOS", "SENHAMOBILE",
         "ALTER TABLE USUARIOS ADD SENHAMOBILE VARCHAR(100)",
@@ -53,11 +51,14 @@ def run_migrations():
         "USUARIOS", "MOBILE_ADMIN",
         "ALTER TABLE USUARIOS ADD MOBILE_ADMIN SMALLINT DEFAULT 0",
     )
-    _migrar_indice_log_tipo()
+    # Tabelas criadas ANTES dos índices — _migrar_indices_log depende delas existirem
     _migrar_lotes_processados()
     _migrar_scans_processados()
-    _reset_sessoes_consolidando()
     _migrar_usuario_deposito()
+    _migrar_indices_log()
+    _migrar_indice_log_tipo()
+    _limpar_log_bipagem()
+    _reset_sessoes_consolidando()
     _migrar_log_data_hora_timestamp()
     _limpar_log_geral()
     _limpar_relatorios_antigos()
