@@ -61,6 +61,7 @@ def run_migrations():
     _migrar_log_data_hora_timestamp()
     _limpar_log_geral()
     _limpar_relatorios_antigos()
+    _limpar_idempotencia_antiga()
 
 
 def _migrar_operadores_app():
@@ -350,6 +351,30 @@ def _migrar_log_data_hora_timestamp():
                 cur.execute("ALTER TABLE LOG_INVENTARIO ALTER DATA_HORA TYPE TIMESTAMP")
     except Exception as e:
         print(f"[migration] LOG_INVENTARIO DATA_HORA→TIMESTAMP: {e}")
+
+
+def _limpar_idempotencia_antiga():
+    """Remove scan_ids e lote_ids de sessões antigas (>90 dias) — dados de dedup já sem função."""
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "DELETE FROM SCANS_PROCESSADOS "
+                "WHERE DATA_HORA < DATEADD(DAY, -90, CURRENT_TIMESTAMP)"
+            )
+            apagados_scans = cur.rowcount
+            cur.execute(
+                "DELETE FROM LOTES_SYNC_PROCESSADOS "
+                "WHERE DATA_HORA < DATEADD(DAY, -90, CURRENT_TIMESTAMP)"
+            )
+            apagados_lotes = cur.rowcount
+            if apagados_scans + apagados_lotes > 0:
+                print(
+                    f"[migration] Idempotência: {apagados_scans} scan_ids e "
+                    f"{apagados_lotes} lote_ids antigos removidos"
+                )
+    except Exception as e:
+        print(f"[migration] _limpar_idempotencia_antiga: {e}")
 
 
 def _migrar_coluna(tabela: str, coluna: str, ddl: str):

@@ -269,6 +269,7 @@ class RelatorioActivity : TimeoutActivity() {
                 binding.btnConsolidar.isEnabled = false
             }
             bloqueado -> {
+                binding.tvAvisoBloqueio.text = "⚠ Divergências confirmadas na recontagem — peça ao supervisor para autorizar a consolidação"
                 binding.tvAvisoBloqueio.setBackgroundColor(0xFFFF8F00.toInt())
                 binding.tvAvisoBloqueio.visibility = View.VISIBLE
                 binding.btnConsolidar.isEnabled = false
