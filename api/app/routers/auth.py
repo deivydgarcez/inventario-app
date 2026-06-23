@@ -14,6 +14,7 @@ _bloqueados: dict[str, float] = {}         # chave: IP ou "user:LOGIN"
 MAX_TENTATIVAS = 5
 JANELA_SEGUNDOS = 60
 BLOQUEIO_SEGUNDOS = 300
+_DB_JANELA_MINUTOS = 15  # janela de verificação no banco (SEC-3)
 
 
 def _role(idgrupo):
@@ -48,6 +49,28 @@ def login(body: LoginRequest, request: Request):
     _checar_bloqueio(ip)
     _checar_bloqueio(user_key)
 
+    # SEC-3: verifica bloqueio persistente no banco (sobrevive a reinicialização do serviço)
+    if user_key not in _bloqueados:
+        try:
+            with get_connection() as con:
+                cur = con.cursor()
+                cur.execute(
+                    "SELECT COUNT(*) FROM LOG_INVENTARIO "
+                    "WHERE TIPO = 'LOGIN_FALHOU' AND LOGIN_USUARIO = ? "
+                    "AND DATA_HORA > DATEADD(MINUTE, ?, CURRENT_TIMESTAMP)",
+                    (body.login.lower(), -_DB_JANELA_MINUTOS),
+                )
+                tentativas_db = cur.fetchone()[0] or 0
+                if tentativas_db >= MAX_TENTATIVAS:
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"Muitas tentativas incorretas. Aguarde {_DB_JANELA_MINUTOS} minutos.",
+                    )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
     # Limpa entradas antigas para evitar vazamento de memória
     for chave in (ip, user_key):
         _tentativas[chave] = [t for t in _tentativas.get(chave, []) if agora - t < JANELA_SEGUNDOS]
@@ -73,11 +96,31 @@ def login(body: LoginRequest, request: Request):
             if len(_tentativas[chave]) >= MAX_TENTATIVAS:
                 _bloqueados[chave] = agora + BLOQUEIO_SEGUNDOS
                 _tentativas.pop(chave, None)
+        # SEC-3: grava falha no banco — persiste entre reinicios do serviço
+        try:
+            with get_connection() as log_con:
+                log_con.cursor().execute(
+                    "INSERT INTO LOG_INVENTARIO (TIPO, LOGIN_USUARIO, MOTIVO, DATA_HORA) "
+                    "VALUES ('LOGIN_FALHOU', ?, ?, CURRENT_TIMESTAMP)",
+                    (body.login.lower(), f"IP: {ip}"),
+                )
+        except Exception:
+            pass
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login ou senha inválidos")
 
     for chave in (ip, user_key):
         _tentativas.pop(chave, None)
         _bloqueados.pop(chave, None)
+
+    # SEC-3: limpa falhas persistentes no banco ao fazer login com sucesso (evita falso bloqueio futuro)
+    try:
+        with get_connection() as log_con:
+            log_con.cursor().execute(
+                "DELETE FROM LOG_INVENTARIO WHERE TIPO = 'LOGIN_FALHOU' AND LOGIN_USUARIO = ?",
+                (body.login.lower(),),
+            )
+    except Exception:
+        pass
 
     is_mi = user["login"].upper() == MI_LOGIN
     mobile_admin = 1 if is_mi else (user.get("mobile_admin") or 0)

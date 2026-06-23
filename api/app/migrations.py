@@ -18,17 +18,45 @@ def run_migrations():
         "ALTER TABLE INVENTARIO_TEMP ADD QTDEATUAL_SNAP DECIMAL(15,4)",
     )
     _migrar_coluna(
+        "INVENTARIO_TEMP", "SESSION_ID",
+        "ALTER TABLE INVENTARIO_TEMP ADD SESSION_ID VARCHAR(36)",
+    )
+    # Identifica registros do Invec vs. Automec — impede DELETE acidental de dados do Automec
+    _migrar_coluna(
+        "INVENTARIO_TEMP", "ORIGEM",
+        "ALTER TABLE INVENTARIO_TEMP ADD ORIGEM VARCHAR(20)",
+    )
+    _migrar_coluna(
         "INVENTARIO", "OPERADOR",
         "ALTER TABLE INVENTARIO ADD OPERADOR VARCHAR(100)",
     )
     _migrar_log_inventario()
+    # SESSION_ID no log permite rastrear edições por sessão (detecção de fraude FRAUDE-2)
+    _migrar_coluna(
+        "LOG_INVENTARIO", "SESSION_ID",
+        "ALTER TABLE LOG_INVENTARIO ADD SESSION_ID VARCHAR(36)",
+    )
+    _migrar_inventario_sessao()
+    # Colunas que podem estar faltando em servidores atualizados de versões anteriores
+    _migrar_coluna("INVENTARIO_SESSAO", "OPERADOR", "ALTER TABLE INVENTARIO_SESSAO ADD OPERADOR VARCHAR(100)")
+    _migrar_coluna("INVENTARIO_SESSAO", "USUARIO",  "ALTER TABLE INVENTARIO_SESSAO ADD USUARIO VARCHAR(50)")
+    _migrar_coluna("INVENTARIO_SESSAO", "STATUS",   "ALTER TABLE INVENTARIO_SESSAO ADD STATUS VARCHAR(20) DEFAULT 'ABERTA'")
+    _migrar_coluna("INVENTARIO_SESSAO", "INICIO",   "ALTER TABLE INVENTARIO_SESSAO ADD INICIO TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    _migrar_coluna("INVENTARIO_SESSAO", "FIM",      "ALTER TABLE INVENTARIO_SESSAO ADD FIM TIMESTAMP")
     _migrar_indices_log()
     _limpar_log_bipagem()
+    _migrar_coluna(
+        "USUARIOS", "SENHAMOBILE",
+        "ALTER TABLE USUARIOS ADD SENHAMOBILE VARCHAR(100)",
+    )
     _migrar_coluna(
         "USUARIOS", "MOBILE_ADMIN",
         "ALTER TABLE USUARIOS ADD MOBILE_ADMIN SMALLINT DEFAULT 0",
     )
     _migrar_indice_log_tipo()
+    _migrar_lotes_processados()
+    _migrar_usuario_deposito()
+    _migrar_log_data_hora_timestamp()
     _limpar_log_geral()
     _limpar_relatorios_antigos()
 
@@ -85,13 +113,18 @@ def _migrar_log_inventario():
 
 
 def _limpar_log_bipagem():
+    # Limita a 10 000 registros por execução para evitar travar o banco em servidores com muitos logs
     try:
         with get_connection() as con:
             cur = con.cursor()
             cur.execute(
                 "DELETE FROM LOG_INVENTARIO "
-                "WHERE TIPO = 'BIPAGEM' "
-                "AND DATA_HORA < DATEADD(DAY, ?, CURRENT_TIMESTAMP)",
+                "WHERE ID IN ("
+                "  SELECT FIRST 10000 ID FROM LOG_INVENTARIO "
+                "  WHERE TIPO = 'BIPAGEM' "
+                "  AND DATA_HORA < DATEADD(DAY, ?, CURRENT_TIMESTAMP) "
+                "  ORDER BY DATA_HORA ASC"
+                ")",
                 (-LOG_RETENCAO_BIPAGEM_DIAS,),
             )
             apagados = cur.rowcount
@@ -101,12 +134,46 @@ def _limpar_log_bipagem():
         print(f"[migration] _limpar_log_bipagem: {e}")
 
 
+def _migrar_inventario_sessao():
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = 'INVENTARIO_SESSAO'"
+            )
+            if cur.fetchone()[0] == 0:
+                cur.execute(
+                    """
+                    CREATE TABLE INVENTARIO_SESSAO (
+                        SESSION_ID  VARCHAR(36)  NOT NULL,
+                        CDDEPOSITO  INTEGER      NOT NULL,
+                        OPERADOR    VARCHAR(100),
+                        USUARIO     VARCHAR(50),
+                        STATUS      VARCHAR(20)  DEFAULT 'ABERTA' NOT NULL,
+                        INICIO      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                        FIM         TIMESTAMP,
+                        CONSTRAINT PK_INV_SESSAO PRIMARY KEY (SESSION_ID)
+                    )
+                    """
+                )
+    except Exception as e:
+        print(f"[migration] INVENTARIO_SESSAO: {e}")
+
+
 def _migrar_indices_log():
     indices = [
-        ("IDX_LOG_INV_DEPOSITO", "CREATE INDEX IDX_LOG_INV_DEPOSITO ON LOG_INVENTARIO (CDDEPOSITO)"),
-        ("IDX_LOG_INV_DATA",     "CREATE DESCENDING INDEX IDX_LOG_INV_DATA ON LOG_INVENTARIO (DATA_HORA)"),
-        # Índice composto para as subqueries do relatório (MOVIMENTO por produto+depósito)
-        ("IDX_INVTEMP_PROD_DEP", "CREATE INDEX IDX_INVTEMP_PROD_DEP ON INVENTARIO_TEMP (CDPRODUTO, CDDEPOSITO)"),
+        ("IDX_LOG_INV_DEPOSITO",    "CREATE INDEX IDX_LOG_INV_DEPOSITO ON LOG_INVENTARIO (CDDEPOSITO)"),
+        ("IDX_LOG_INV_DATA",        "CREATE DESCENDING INDEX IDX_LOG_INV_DATA ON LOG_INVENTARIO (DATA_HORA)"),
+        ("IDX_INVTEMP_PROD_DEP",    "CREATE INDEX IDX_INVTEMP_PROD_DEP ON INVENTARIO_TEMP (CDPRODUTO, CDDEPOSITO)"),
+        ("IDX_INVTEMP_SESSION",     "CREATE INDEX IDX_INVTEMP_SESSION ON INVENTARIO_TEMP (SESSION_ID, CDDEPOSITO)"),
+        # Índice composto cobre NOT EXISTS com SESSION_ID (PERF-4)
+        ("IDX_INVTEMP_PROD_DEP_SES","CREATE INDEX IDX_INVTEMP_PROD_DEP_SES ON INVENTARIO_TEMP (CDPRODUTO, CDDEPOSITO, SESSION_ID)"),
+        # Índice em LOTES_SYNC_PROCESSADOS para auditoria e limpeza por sessão (INST-4)
+        ("IDX_LOTES_SESSION",       "CREATE INDEX IDX_LOTES_SESSION ON LOTES_SYNC_PROCESSADOS (SESSION_ID)"),
+        # Índice para rastrear edições por sessão (FRAUDE-2)
+        ("IDX_LOG_SESSION",         "CREATE INDEX IDX_LOG_SESSION ON LOG_INVENTARIO (SESSION_ID, TIPO)"),
+        # Índice de permissões por usuário/depósito (FRAUDE-3)
+        ("IDX_USUDEP_USUARIO",      "CREATE INDEX IDX_USUDEP_USUARIO ON USUARIO_DEPOSITO (IDUSUARIO)"),
     ]
     for nome, ddl in indices:
         try:
@@ -136,14 +203,20 @@ def _migrar_indice_log_tipo():
 
 
 def _limpar_log_geral():
-    """Remove logs antigos de todos os tipos exceto EDICAO_SUSPEITA e ALERTA_REESCAN (guardar mais tempo)."""
+    """Remove logs operacionais antigos. EXCLUSAO e CONSOLIDACAO nunca são apagados (auditoria permanente)."""
+    # FRAUDE-7: EXCLUSAO e CONSOLIDACAO retidos indefinidamente para rastreabilidade fiscal
+    # Limite de 10 000 por execução para não travar o banco na subida do serviço
     try:
         with get_connection() as con:
             cur = con.cursor()
             cur.execute(
                 "DELETE FROM LOG_INVENTARIO "
-                "WHERE TIPO NOT IN ('EDICAO_SUSPEITA', 'ALERTA_REESCAN') "
-                "AND DATA_HORA < DATEADD(DAY, ?, CURRENT_TIMESTAMP)",
+                "WHERE ID IN ("
+                "  SELECT FIRST 10000 ID FROM LOG_INVENTARIO "
+                "  WHERE TIPO NOT IN ('EDICAO_SUSPEITA', 'ALERTA_REESCAN', 'EXCLUSAO', 'CONSOLIDACAO') "
+                "  AND DATA_HORA < DATEADD(DAY, ?, CURRENT_TIMESTAMP) "
+                "  ORDER BY DATA_HORA ASC"
+                ")",
                 (-LOG_RETENCAO_GERAL_DIAS,),
             )
             apagados = cur.rowcount
@@ -171,6 +244,70 @@ def _limpar_relatorios_antigos():
             print(f"[migration] Relatorios: {apagados} arquivos antigos removidos")
     except Exception as e:
         print(f"[migration] _limpar_relatorios_antigos: {e}")
+
+
+def _migrar_lotes_processados():
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = 'LOTES_SYNC_PROCESSADOS'"
+            )
+            if cur.fetchone()[0] == 0:
+                cur.execute(
+                    """
+                    CREATE TABLE LOTES_SYNC_PROCESSADOS (
+                        LOTE_ID    VARCHAR(36)  NOT NULL PRIMARY KEY,
+                        SESSION_ID VARCHAR(36),
+                        DATA_HORA  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP NOT NULL
+                    )
+                    """
+                )
+    except Exception as e:
+        print(f"[migration] LOTES_SYNC_PROCESSADOS: {e}")
+
+
+def _migrar_usuario_deposito():
+    """Tabela de permissão explícita por usuário/depósito (FRAUDE-3)."""
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = 'USUARIO_DEPOSITO'"
+            )
+            if cur.fetchone()[0] == 0:
+                cur.execute(
+                    """
+                    CREATE TABLE USUARIO_DEPOSITO (
+                        IDUSUARIO  INTEGER NOT NULL,
+                        CDDEPOSITO INTEGER NOT NULL,
+                        CONSTRAINT PK_USUARIO_DEPOSITO PRIMARY KEY (IDUSUARIO, CDDEPOSITO)
+                    )
+                    """
+                )
+    except Exception as e:
+        print(f"[migration] USUARIO_DEPOSITO: {e}")
+
+
+def _migrar_log_data_hora_timestamp():
+    """Converte LOG_INVENTARIO.DATA_HORA de DATE para TIMESTAMP se necessário (instâncias antigas)."""
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                """
+                SELECT F.RDB$FIELD_TYPE
+                FROM RDB$RELATION_FIELDS RF
+                JOIN RDB$FIELDS F ON F.RDB$FIELD_NAME = RF.RDB$FIELD_SOURCE
+                WHERE RF.RDB$RELATION_NAME = 'LOG_INVENTARIO'
+                  AND RF.RDB$FIELD_NAME = 'DATA_HORA'
+                """
+            )
+            row = cur.fetchone()
+            if row and row[0] == 12:  # 12 = DATE, 35 = TIMESTAMP
+                cur.execute("ALTER TABLE LOG_INVENTARIO ALTER DATA_HORA TYPE TIMESTAMP")
+    except Exception as e:
+        print(f"[migration] LOG_INVENTARIO DATA_HORA→TIMESTAMP: {e}")
 
 
 def _migrar_coluna(tabela: str, coluna: str, ddl: str):

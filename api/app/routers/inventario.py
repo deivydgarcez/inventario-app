@@ -1,5 +1,7 @@
 import os
+import secrets
 import threading
+import time
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,6 +10,7 @@ from app.security import get_current_user
 from app.models.schemas import (
     BipagemRequest, BipagemResponse, EditarBipagemRequest,
     ItemRelatorio, ConsolidarRequest, ItemHistorico, LogItem, ResumoContagem,
+    LoteBipagemRequest, LoteSyncResponse, SupervisorPreAuthRequest,
 )
 
 router = APIRouter(prefix="/inventario", tags=["Inventário"])
@@ -15,14 +18,25 @@ router = APIRouter(prefix="/inventario", tags=["Inventário"])
 ALERTA_MULTIPLO = 2.0
 ALERTA_MINIMO   = 10.0
 
-LIMIAR_RECONTAGEM         = 0.30  # 30% dos itens com divergência
-LIMIAR_RECONTAGEM_MINIMO  = 5     # mínimo de 5 itens divergentes para exigir
+LIMIAR_RECONTAGEM        = 0.30
+LIMIAR_RECONTAGEM_MINIMO = 5
 
 PASTA_RELATORIOS = r"C:\Invec\relatorios"
 
+# BANCO-4: empresa configurável via .env (não deve vir do cliente)
+IDEMPRESA = int(os.getenv("IDEMPRESA", 1))
+
+# BANCO-1: lock em memória (guarda primário dentro do processo)
 _consolidando: set[int] = set()
 _consolidando_lock = threading.Lock()
 
+# SEC-2: tokens de pré-autenticação de supervisor {token: {login, idgrupo, expires}}
+_supervisor_tokens: dict[str, dict] = {}
+_supervisor_tokens_lock = threading.Lock()
+_SUPERVISOR_TOKEN_TTL = 300  # 5 minutos
+
+
+# ── Helpers internos ──────────────────────────────────────────────────────────
 
 def _registrar_log(
     tipo: str,
@@ -35,6 +49,7 @@ def _registrar_log(
     qtde_depois: float = None,
     motivo: str = None,
     device_id: str = None,
+    session_id: str = None,
 ):
     """Grava log em conexão separada — falha silenciosa para nunca travar a operação principal."""
     try:
@@ -44,11 +59,11 @@ def _registrar_log(
                 """
                 INSERT INTO LOG_INVENTARIO
                     (TIPO, CDDEPOSITO, CDPRODUTO, PRODUTO, OPERADOR,
-                     LOGIN_USUARIO, QTDE_ANTES, QTDE_DEPOIS, MOTIVO, DEVICE_ID, DATA_HORA)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                     LOGIN_USUARIO, QTDE_ANTES, QTDE_DEPOIS, MOTIVO, DEVICE_ID, SESSION_ID, DATA_HORA)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
                 (tipo, cddeposito, cdproduto, produto, operador,
-                 login_usuario, qtde_antes, qtde_depois, motivo, device_id),
+                 login_usuario, qtde_antes, qtde_depois, motivo, device_id, session_id),
             )
     except Exception as e:
         print(f"[log] Falha ao gravar auditoria ({tipo}): {e}")
@@ -63,7 +78,6 @@ def _salvar_relatorio(
     supervisor: str,
     itens_divergentes: list[dict],
 ):
-    """Salva relatório de consolidação em arquivo texto. Falha silenciosa."""
     try:
         os.makedirs(PASTA_RELATORIOS, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -95,11 +109,103 @@ def _salvar_relatorio(
         print(f"[relatorio] Erro ao salvar relatorio de consolidacao: {e}")
 
 
+def _verificar_acesso_deposito(current_user: dict, cddeposito: int) -> None:
+    """FRAUDE-3: valida que o usuário tem permissão para o depósito.
+    Admins (idgrupo=1) e gerentes (idgrupo=2) têm acesso irrestrito.
+    Operadores sem restrições cadastradas também têm acesso total (backward compat)."""
+    idgrupo = current_user.get("idgrupo") or 3
+    if idgrupo in (1, 2):
+        return
+    idusuario = current_user.get("sub")
+    if not idusuario:
+        return
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM USUARIO_DEPOSITO WHERE IDUSUARIO = ?",
+                (int(idusuario),),
+            )
+            total_restricoes = cur.fetchone()[0] or 0
+            if total_restricoes == 0:
+                return  # sem restrições → acesso total (backward compat)
+            cur.execute(
+                "SELECT COUNT(*) FROM USUARIO_DEPOSITO WHERE IDUSUARIO = ? AND CDDEPOSITO = ?",
+                (int(idusuario), cddeposito),
+            )
+            if (cur.fetchone()[0] or 0) == 0:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Sem permissão para este depósito",
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # se USUARIO_DEPOSITO ainda não existe (migration pendente), permite acesso
+
+
+def _validar_supervisor_token(token: str) -> dict:
+    """SEC-2: valida token de pré-autenticação do supervisor."""
+    with _supervisor_tokens_lock:
+        data = _supervisor_tokens.get(token)
+        if not data or data["expires"] < time.time():
+            _supervisor_tokens.pop(token, None)
+            raise HTTPException(
+                status_code=401,
+                detail="Token de supervisor inválido ou expirado. Solicite nova pré-autenticação.",
+            )
+        _supervisor_tokens.pop(token)  # token de uso único
+        return data
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("/supervisor/pre-auth")
+def supervisor_pre_auth(
+    body: SupervisorPreAuthRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """SEC-2: Supervisor autentica previamente e recebe token válido por 5 min.
+    O token é usado no consolidar em vez de enviar a senha em texto plano."""
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute(
+            "SELECT IDUSUARIO, LOGIN, IDGRUPO, SENHAMOBILE FROM USUARIOS "
+            "WHERE LOWER(LOGIN) = LOWER(?) AND (INATIVO IS NULL OR INATIVO = 0)",
+            (body.login,),
+        )
+        sup = fetchone_as_dict(cur)
+
+    if not sup:
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    senha_mobile = sup.get("senhamobile") or ""
+    if not senha_mobile or senha_mobile != body.senha:
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    if (sup.get("idgrupo") or 3) not in (1, 2):
+        raise HTTPException(status_code=403, detail="Supervisor precisa ser gerente ou administrador")
+
+    token = secrets.token_hex(24)
+    with _supervisor_tokens_lock:
+        # Limpa tokens expirados
+        expirados = [k for k, v in _supervisor_tokens.items() if v["expires"] < time.time()]
+        for k in expirados:
+            del _supervisor_tokens[k]
+        _supervisor_tokens[token] = {
+            "login": sup["login"],
+            "idgrupo": sup.get("idgrupo") or 3,
+            "expires": time.time() + _SUPERVISOR_TOKEN_TTL,
+        }
+
+    return {"supervisor_token": token, "expira_em_segundos": _SUPERVISOR_TOKEN_TTL}
+
+
 @router.post("/bipagem", response_model=BipagemResponse)
 def registrar_bipagem(
     body: BipagemRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    _verificar_acesso_deposito(current_user, body.cddeposito)
+
     if body.qtde <= 0:
         raise HTTPException(status_code=400, detail="Quantidade deve ser maior que zero")
 
@@ -111,7 +217,6 @@ def registrar_bipagem(
     with get_connection() as con:
         cur = con.cursor()
 
-        # Busca dados do produto antes de qualquer escrita
         cur.execute(
             "SELECT P.PRODUTO, "
             "(SELECT FIRST 1 M2.QTDEATUAL FROM MOVIMENTO M2 "
@@ -125,30 +230,40 @@ def registrar_bipagem(
         nome_produto = row_prod["produto"]
         qtde_sistema = float(row_prod["qtdeatual"] or 0.0)
 
-        # UPDATE atômico: evita race condition se dois celulares escaneiam o mesmo item simultaneamente
-        cur.execute(
-            "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
-            "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
-            (body.qtde, body.operador, body.cdproduto, body.cddeposito),
-        )
+        if body.session_id:
+            cur.execute(
+                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
+                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ? RETURNING QTDE",
+                (body.qtde, body.operador, body.cdproduto, body.cddeposito, body.session_id),
+            )
+        else:
+            cur.execute(
+                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
+                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID IS NULL RETURNING QTDE",
+                (body.qtde, body.operador, body.cdproduto, body.cddeposito),
+            )
         row = cur.fetchone()
         if row:
             nova_qtde = float(row[0])
             mensagem = f"Quantidade atualizada para {nova_qtde}"
         else:
             nova_qtde = body.qtde
-            # Primeiro scan deste produto: salva snapshot de QTDEATUAL agora.
-            # Snapshot não é atualizado em scans subsequentes — queremos o valor
-            # do momento da 1ª contagem, não da consolidação (podem chegar NFs entre os dois).
-            cur.execute(
-                "INSERT INTO INVENTARIO_TEMP (CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (body.cdproduto, body.cddeposito, body.qtde, body.operador, qtde_sistema),
-            )
+            if body.session_id:
+                cur.execute(
+                    "INSERT INTO INVENTARIO_TEMP "
+                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, SESSION_ID, ORIGEM) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'INVEC')",
+                    (body.cdproduto, body.cddeposito, body.qtde, body.operador, qtde_sistema, body.session_id),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO INVENTARIO_TEMP "
+                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, ORIGEM) "
+                    "VALUES (?, ?, ?, ?, ?, 'INVEC')",
+                    (body.cdproduto, body.cddeposito, body.qtde, body.operador, qtde_sistema),
+                )
             mensagem = "Bipagem registrada"
 
-            # Detecta padrão de fraude: produto foi excluído da contagem na mesma sessão
-            # e está sendo re-escaneado. Registra alerta independente da quantidade.
             cur.execute(
                 "SELECT COUNT(*) FROM LOG_INVENTARIO "
                 "WHERE TIPO = 'EXCLUSAO' AND CDPRODUTO = ? AND CDDEPOSITO = ? "
@@ -159,14 +274,11 @@ def registrar_bipagem(
                 _registrar_log(
                     "ALERTA_REESCAN",
                     login_usuario=current_user.get("login", ""),
-                    cddeposito=body.cddeposito,
-                    cdproduto=body.cdproduto,
-                    produto=nome_produto,
-                    operador=body.operador,
-                    qtde_antes=qtde_sistema,
-                    qtde_depois=nova_qtde,
+                    cddeposito=body.cddeposito, cdproduto=body.cdproduto,
+                    produto=nome_produto, operador=body.operador,
+                    qtde_antes=qtde_sistema, qtde_depois=nova_qtde,
                     motivo="Produto excluído da contagem e re-escaneado na mesma sessão",
-                    device_id=body.device_id,
+                    device_id=body.device_id, session_id=body.session_id,
                 )
 
     alerta = None
@@ -179,14 +291,10 @@ def registrar_bipagem(
         _registrar_log(
             "ALERTA",
             login_usuario=current_user.get("login", ""),
-            cddeposito=body.cddeposito,
-            cdproduto=body.cdproduto,
-            produto=nome_produto,
-            operador=body.operador,
-            qtde_antes=qtde_sistema,
-            qtde_depois=nova_qtde,
-            motivo=alerta,
-            device_id=body.device_id,
+            cddeposito=body.cddeposito, cdproduto=body.cdproduto,
+            produto=nome_produto, operador=body.operador,
+            qtde_antes=qtde_sistema, qtde_depois=nova_qtde,
+            motivo=alerta, device_id=body.device_id, session_id=body.session_id,
         )
 
     return BipagemResponse(
@@ -199,18 +307,127 @@ def registrar_bipagem(
     )
 
 
+@router.post("/bipagem/lote", response_model=LoteSyncResponse)
+def sincronizar_lote(
+    body: LoteBipagemRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    _verificar_acesso_deposito(current_user, body.cddeposito)
+
+    sincronizados = 0
+    alertas: list[str] = []
+
+    if body.lote_id:
+        try:
+            with get_connection() as con:
+                cur = con.cursor()
+                cur.execute(
+                    "SELECT COUNT(*) FROM LOTES_SYNC_PROCESSADOS WHERE LOTE_ID = ?",
+                    (body.lote_id,),
+                )
+                if cur.fetchone()[0] > 0:
+                    return LoteSyncResponse(sincronizados=0, alertas=[])
+        except Exception as e:
+            print(f"[lote] idempotência check: {e}")
+
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM INVENTARIO_SESSAO WHERE SESSION_ID = ?",
+                (body.session_id,),
+            )
+            if cur.fetchone()[0] == 0:
+                cur.execute(
+                    "INSERT INTO INVENTARIO_SESSAO (SESSION_ID, CDDEPOSITO, USUARIO, STATUS) "
+                    "VALUES (?, ?, ?, 'ABERTA')",
+                    (body.session_id, body.cddeposito, current_user.get("login", "")),
+                )
+    except Exception as e:
+        print(f"[lote] INVENTARIO_SESSAO upsert: {e}")
+
+    with get_connection() as con:
+        cur = con.cursor()
+        for item in body.bipagens:
+            cur.execute(
+                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
+                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ? RETURNING QTDE",
+                (item.qtde, item.operador, item.cdproduto, body.cddeposito, body.session_id),
+            )
+            row = cur.fetchone()
+            if row:
+                nova_qtde = float(row[0])
+            else:
+                nova_qtde = item.qtde
+                cur.execute(
+                    "INSERT INTO INVENTARIO_TEMP "
+                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, SESSION_ID, ORIGEM) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'INVEC')",
+                    (item.cdproduto, body.cddeposito, item.qtde, item.operador,
+                     item.qtde_sistema, body.session_id),
+                )
+            sincronizados += 1
+
+            if item.qtde_sistema >= ALERTA_MINIMO and nova_qtde > item.qtde_sistema * ALERTA_MULTIPLO:
+                msg = (
+                    f"Produto #{item.cdproduto} ({item.produto}): "
+                    f"qtde {nova_qtde:.0f} excede {ALERTA_MULTIPLO:.0f}x o sistema ({item.qtde_sistema:.0f})"
+                )
+                alertas.append(msg)
+                _registrar_log(
+                    "ALERTA",
+                    login_usuario=current_user.get("login", ""),
+                    cddeposito=body.cddeposito, cdproduto=item.cdproduto,
+                    produto=item.produto, operador=item.operador,
+                    qtde_antes=item.qtde_sistema, qtde_depois=nova_qtde,
+                    motivo=msg, device_id=item.device_id, session_id=body.session_id,
+                )
+
+    if body.lote_id:
+        try:
+            with get_connection() as con:
+                cur = con.cursor()
+                cur.execute(
+                    "INSERT INTO LOTES_SYNC_PROCESSADOS (LOTE_ID, SESSION_ID) VALUES (?, ?)",
+                    (body.lote_id, body.session_id),
+                )
+        except Exception:
+            pass
+
+    _registrar_log(
+        "SYNC_LOTE",
+        login_usuario=current_user.get("login", ""),
+        cddeposito=body.cddeposito,
+        qtde_depois=float(sincronizados),
+        motivo=(
+            f"Lote offline: {sincronizados} itens · session={body.session_id}"
+            + (f" · lote={body.lote_id}" if body.lote_id else "")
+        ),
+        device_id=body.bipagens[0].device_id if body.bipagens else None,
+        session_id=body.session_id,
+    )
+
+    return LoteSyncResponse(sincronizados=sincronizados, alertas=alertas)
+
+
 @router.get("/relatorio/{cddeposito}", response_model=list[ItemRelatorio])
 def relatorio_inventario(
     cddeposito: int,
+    session_id: Optional[str] = Query(default=None),
     current_user: dict = Depends(get_current_user),
 ):
+    _verificar_acesso_deposito(current_user, cddeposito)
+
     with get_connection() as con:
         cur = con.cursor()
-        # QTDE_SISTEMA usa o snapshot tirado no momento do 1º scan (QTDEATUAL_SNAP),
-        # com fallback para MOVIMENTO.QTDEATUAL para linhas anteriores à migration.
-        # Isso garante que o operador veja exatamente o mesmo valor que a consolidação vai usar.
+        if session_id:
+            session_filter = "AND IT.SESSION_ID = ?"
+            params = (cddeposito, cddeposito, cddeposito, session_id)
+        else:
+            session_filter = "AND IT.SESSION_ID IS NULL"
+            params = (cddeposito, cddeposito, cddeposito)
         cur.execute(
-            """
+            f"""
             SELECT
                 P.CDPRODUTO,
                 P.PRODUTO,
@@ -231,9 +448,10 @@ def relatorio_inventario(
             FROM PRODUTO P
             JOIN INVENTARIO_TEMP IT
                 ON IT.CDPRODUTO = P.CDPRODUTO AND IT.CDDEPOSITO = ?
+            WHERE 1=1 {session_filter}
             ORDER BY P.PRODUTO
             """,
-            (cddeposito, cddeposito, cddeposito),
+            params,
         )
         return fetchall_as_dict(cur)
 
@@ -241,30 +459,40 @@ def relatorio_inventario(
 @router.get("/resumo/{cddeposito}", response_model=ResumoContagem)
 def resumo_contagem(
     cddeposito: int,
+    session_id: Optional[str] = Query(default=None),
     current_user: dict = Depends(get_current_user),
 ):
+    _verificar_acesso_deposito(current_user, cddeposito)
+
     with get_connection() as con:
         cur = con.cursor()
 
-        # Produtos com estoque positivo no depósito que NÃO foram contados na sessão atual.
-        # Usamos FIRST 50 na lista de nomes para não sobrecarregar a resposta.
         cur.execute(
-            """
-            SELECT COUNT(*) FROM MOVIMENTO M
-            WHERE M.CDDEPOSITO = ? AND M.QTDEATUAL > 0
-            """,
+            "SELECT COUNT(*) FROM MOVIMENTO M WHERE M.CDDEPOSITO = ? AND M.QTDEATUAL > 0",
             (cddeposito,),
         )
         total_deposito = cur.fetchone()[0] or 0
 
-        cur.execute(
-            "SELECT COUNT(*) FROM INVENTARIO_TEMP WHERE CDDEPOSITO = ?",
-            (cddeposito,),
-        )
+        if session_id:
+            cur.execute(
+                "SELECT COUNT(*) FROM INVENTARIO_TEMP WHERE CDDEPOSITO = ? AND SESSION_ID = ?",
+                (cddeposito, session_id),
+            )
+        else:
+            cur.execute(
+                "SELECT COUNT(*) FROM INVENTARIO_TEMP WHERE CDDEPOSITO = ? AND SESSION_ID IS NULL",
+                (cddeposito,),
+            )
         contados = cur.fetchone()[0] or 0
 
+        if session_id:
+            nao_contados_filter = "AND IT.SESSION_ID = ?"
+            nao_params = (cddeposito, cddeposito, session_id)
+        else:
+            nao_contados_filter = "AND IT.SESSION_ID IS NULL"
+            nao_params = (cddeposito, cddeposito)
         cur.execute(
-            """
+            f"""
             SELECT FIRST 50 P.PRODUTO
             FROM MOVIMENTO M
             JOIN PRODUTO P ON CAST(P.CDPRODUTO AS VARCHAR(10)) = M.CDPRODUTO
@@ -272,10 +500,11 @@ def resumo_contagem(
               AND NOT EXISTS (
                   SELECT 1 FROM INVENTARIO_TEMP IT
                   WHERE IT.CDPRODUTO = P.CDPRODUTO AND IT.CDDEPOSITO = ?
+                  {nao_contados_filter}
               )
             ORDER BY P.PRODUTO
             """,
-            (cddeposito, cddeposito),
+            nao_params,
         )
         nomes = [row[0] for row in cur.fetchall()]
 
@@ -293,6 +522,9 @@ def consolidar_inventario(
     body: ConsolidarRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    _verificar_acesso_deposito(current_user, body.cddeposito)
+
+    # BANCO-1: lock em memória (guarda primário no processo atual)
     with _consolidando_lock:
         if body.cddeposito in _consolidando:
             raise HTTPException(
@@ -301,11 +533,45 @@ def consolidar_inventario(
             )
         _consolidando.add(body.cddeposito)
 
+    db_lock_acquired = False
     try:
+        # BANCO-1: lock persistente no banco — protege contra restart do serviço no meio
+        if body.session_id:
+            with get_connection() as con:
+                cur = con.cursor()
+                cur.execute(
+                    "SELECT STATUS FROM INVENTARIO_SESSAO WHERE SESSION_ID = ?",
+                    (body.session_id,),
+                )
+                row_sessao = cur.fetchone()
+                if row_sessao:
+                    status_atual = (row_sessao[0] or "").upper()
+                    if status_atual == "CONSOLIDADA":
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Esta sessão já foi consolidada anteriormente.",
+                        )
+                    if status_atual == "CONSOLIDANDO":
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Consolidação já em andamento para esta sessão. Aguarde ou verifique o histórico.",
+                        )
+                    # STATUS IS NULL = linha criada antes da migration da coluna (tratada como ABERTA)
+                    cur.execute(
+                        "UPDATE INVENTARIO_SESSAO SET STATUS = 'CONSOLIDANDO' "
+                        "WHERE SESSION_ID = ? AND (STATUS = 'ABERTA' OR STATUS IS NULL)",
+                        (body.session_id,),
+                    )
+                    if cur.rowcount == 0:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Não foi possível adquirir lock de consolidação. Tente novamente.",
+                        )
+                    db_lock_acquired = True
+
         with get_connection() as con:
             cur = con.cursor()
 
-            # IDUSUARIO do usuário autenticado para gravar em MOV_PRODUTO
             cur.execute(
                 "SELECT IDUSUARIO FROM USUARIOS WHERE LOWER(LOGIN) = LOWER(?)",
                 (current_user.get("login", ""),),
@@ -313,9 +579,29 @@ def consolidar_inventario(
             row_user = cur.fetchone()
             idusuario = row_user[0] if row_user else 1
 
-            # Busca todos os itens com FATORCONV e VLCUSTO em uma única query
+            if body.session_id:
+                session_where = "AND IT.SESSION_ID = ?"
+                itens_params = (body.cddeposito, body.session_id)
+            else:
+                session_where = "AND IT.SESSION_ID IS NULL"
+                itens_params = (body.cddeposito,)
+
+            # PERF-2: pré-busca QTDEATUAL de MOVIMENTO em uma única query antes do loop
+            movimento_qtde: dict[str, float] = {}
+            try:
+                cur.execute(
+                    "SELECT M.CDPRODUTO, M.QTDEATUAL FROM MOVIMENTO M WHERE M.CDDEPOSITO = ?",
+                    (body.cddeposito,),
+                )
+                for row in cur.fetchall():
+                    cprod = str(row[0])
+                    if cprod not in movimento_qtde:
+                        movimento_qtde[cprod] = float(row[1] or 0)
+            except Exception as e:
+                print(f"[consolidar] pre-fetch MOVIMENTO: {e}")
+
             cur.execute(
-                """
+                f"""
                 SELECT
                     IT.CDPRODUTO,
                     IT.CDDEPOSITO,
@@ -324,12 +610,7 @@ def consolidar_inventario(
                     CAST(IT.CDPRODUTO AS VARCHAR(10))            AS CDPRODUTO_STR,
                     COALESCE(P.CDUNIDADE, 'UN')                  AS CDUNIDADE,
                     COALESCE(P.PRODUTO, '')                      AS PRODUTO,
-                    COALESCE(IT.QTDEATUAL_SNAP,
-                        (SELECT FIRST 1 M2.QTDEATUAL
-                         FROM MOVIMENTO M2
-                         WHERE M2.CDPRODUTO = CAST(IT.CDPRODUTO AS VARCHAR(10))
-                           AND M2.CDDEPOSITO = IT.CDDEPOSITO),
-                        0)                                       AS QTDEATUAL,
+                    IT.QTDEATUAL_SNAP,
                     COALESCE(
                         (SELECT FIRST 1 PP2.FATORCONV
                          FROM PRODUTOPRECO PP2
@@ -347,9 +628,9 @@ def consolidar_inventario(
                         0)                                       AS VLCUSTO
                 FROM INVENTARIO_TEMP IT
                 JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO
-                WHERE IT.CDDEPOSITO = ?
+                WHERE IT.CDDEPOSITO = ? {session_where}
                 """,
-                (body.cddeposito,),
+                itens_params,
             )
             itens = fetchall_as_dict(cur)
 
@@ -360,11 +641,19 @@ def consolidar_inventario(
                     detail="Nenhuma bipagem pendente para este depósito",
                 )
 
-            # Busca QTDEENTREGA por produto — aplicado sempre.
-            # Produtos sem pedido pendente ficam com 0, tornando o cálculo idêntico ao sem CE.
-            # Fórmula do Automec (GravaSaidas + IncluirRegistro aTp=4):
-            # QTDEENTREGA = (QTDPRODUTO - QTD_VEND_FUT + QTD_VEND_FUT_LIB
-            #                - QTDELIB - QTDENTREGAR - QTDENTCANCELADA - QTDCARREGADA) * FATORCONV
+            # FRAUDE-2: verifica se houve edições nesta sessão
+            teve_edicoes = False
+            if body.session_id:
+                try:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM LOG_INVENTARIO "
+                        "WHERE SESSION_ID = ? AND TIPO IN ('EDICAO', 'EDICAO_SUSPEITA')",
+                        (body.session_id,),
+                    )
+                    teve_edicoes = (cur.fetchone()[0] or 0) > 0
+                except Exception:
+                    pass
+
             qtde_entrega_map: dict[int, float] = {}
             try:
                 cur.execute(
@@ -391,23 +680,19 @@ def consolidar_inventario(
                     (body.cddeposito,),
                 )
                 for row in fetchall_as_dict(cur):
-                    # Clamp para zero: cancelamentos/carregamentos podem exceder o pedido,
-                    # resultando em valor negativo que corromperia QTSAIDA no trigger.
                     qtde_entrega_map[row["cdproduto"]] = max(0.0, float(row["qtdeentrega"] or 0))
             except Exception as e:
-                # Tabelas SAIDAPRODUTO/SAIDAESTOQUE podem não existir em versões antigas do Automec.
-                # Nesse caso, continua sem ajuste de entrega (comportamento equivalente a CE desativado).
                 print(f"[consolidar] SAIDAPRODUTO indisponível, ignorando entregas pendentes: {e}")
 
             divergencias = 0
             for item in itens:
-                qtde_atual = float(item["qtdeatual"] or 0)
+                # PERF-2: usa mapa pré-buscado em vez de subquery por item
+                qtde_atual = float(item.get("qtdeatual_snap") or movimento_qtde.get(item["cdproduto_str"], 0))
                 qtdeentrega = qtde_entrega_map.get(item["cdproduto"], 0.0)
                 baseline = qtde_atual + qtdeentrega
                 if abs(float(item["qtde_contada"] or 0) - baseline) > 0.001:
                     divergencias += 1
 
-            # Recontagem obrigatória quando mais de 30% dos itens têm divergência
             if (
                 divergencias >= LIMIAR_RECONTAGEM_MINIMO
                 and (divergencias / total) >= LIMIAR_RECONTAGEM
@@ -422,54 +707,66 @@ def consolidar_inventario(
                     ),
                 )
 
-            if divergencias > 0:
-                if not body.supervisor_login or not body.supervisor_senha:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail=f"Há {divergencias} divergências. Login de supervisor obrigatório para consolidar.",
-                    )
-                cur.execute(
-                    "SELECT IDUSUARIO, LOGIN, IDGRUPO, SENHAMOBILE FROM USUARIOS "
-                    "WHERE LOWER(LOGIN) = LOWER(?) "
-                    "AND (INATIVO IS NULL OR INATIVO = 0)",
-                    (body.supervisor_login,),
+            # FRAUDE-2: exige supervisor se houve edições, mesmo sem divergências aparentes
+            supervisor_login_validado = None
+            if divergencias > 0 or teve_edicoes:
+                motivo_supervisor = (
+                    f"Há {divergencias} divergências." if divergencias > 0 else ""
                 )
-                supervisor = fetchone_as_dict(cur)
-                if not supervisor:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Credenciais do supervisor inválidas",
+                if teve_edicoes and divergencias == 0:
+                    motivo_supervisor = "Houve edições de quantidade nesta sessão."
+
+                # SEC-2: aceita supervisor_token (pré-autenticado) ou supervisor_senha (legado)
+                if body.supervisor_token:
+                    token_data = _validar_supervisor_token(body.supervisor_token)
+                    supervisor_login_validado = token_data["login"]
+                    if token_data["idgrupo"] not in (1, 2):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Supervisor precisa ser gerente ou administrador",
+                        )
+                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3
+                    if supervisor_login_validado.lower() == current_user.get("login", "").lower() and quem_consolida_operador:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Operadores não podem autorizar a própria consolidação.",
+                        )
+                elif body.supervisor_login and body.supervisor_senha:
+                    cur.execute(
+                        "SELECT IDUSUARIO, LOGIN, IDGRUPO, SENHAMOBILE FROM USUARIOS "
+                        "WHERE LOWER(LOGIN) = LOWER(?) AND (INATIVO IS NULL OR INATIVO = 0)",
+                        (body.supervisor_login,),
                     )
-                senha_mobile = supervisor.get("senhamobile") or ""
-                if not senha_mobile:
+                    supervisor = fetchone_as_dict(cur)
+                    if not supervisor:
+                        raise HTTPException(status_code=401, detail="Credenciais do supervisor inválidas")
+                    senha_mobile = supervisor.get("senhamobile") or ""
+                    if not senha_mobile:
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Supervisor não possui senha mobile configurada.",
+                        )
+                    if senha_mobile != body.supervisor_senha:
+                        raise HTTPException(status_code=401, detail="Credenciais do supervisor inválidas")
+                    if (supervisor.get("idgrupo") or 3) not in (1, 2):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Supervisor precisa ser gerente ou administrador",
+                        )
+                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3
+                    mesmo_usuario = supervisor["login"].lower() == current_user.get("login", "").lower()
+                    if mesmo_usuario and quem_consolida_operador:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Operadores não podem autorizar a própria consolidação.",
+                        )
+                    supervisor_login_validado = supervisor["login"]
+                else:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Supervisor não possui senha mobile configurada. Configure em Usuários.",
-                    )
-                if senha_mobile != body.supervisor_senha:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Credenciais do supervisor inválidas",
-                    )
-                if (supervisor.get("idgrupo") or 3) not in (1, 2):
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Supervisor precisa ser gerente ou administrador",
-                    )
-                # Operadores (idgrupo=3) não podem ser o próprio supervisor —
-                # precisam de um gerente/admin diferente para autorizar.
-                # Gerentes e admins podem consolidar e autorizar com as próprias credenciais.
-                quem_consolida_e_operador = (current_user.get("idgrupo") or 3) == 3
-                mesmo_usuario = supervisor["login"].lower() == current_user.get("login", "").lower()
-                if mesmo_usuario and quem_consolida_e_operador:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Operadores não podem autorizar a própria consolidação. Chame um gerente.",
+                        detail=f"{motivo_supervisor} Supervisor obrigatório. Use pré-autenticação ou informe login e senha.",
                     )
 
-            # Gera IDINVENTARIO UMA VEZ para toda a sessão de inventário.
-            # Mesmo generator que o Automec usa (GEN_MOV_PRODUTO), igual ao Delphi GravarQuantidade.
-            # O IDMOVIMENTO de cada linha é gerado automaticamente pelo trigger TG_ID_MOV_PRODUTO.
             cur.execute("SELECT GEN_ID(GEN_MOV_PRODUTO, 1) FROM RDB$DATABASE")
             idinventario = cur.fetchone()[0]
 
@@ -477,21 +774,21 @@ def consolidar_inventario(
             itens_divergentes = []
 
             for item in itens:
-                cdproduto      = item["cdproduto"]
-                cdproduto_str  = item["cdproduto_str"]
-                qtde_contada   = float(item["qtde_contada"] or 0)
-                qtde_atual     = float(item["qtdeatual"] or 0)
-                fatorconv      = float(item["fatorconv"] or 1)
-                vlcusto        = float(item["vlcusto"] or 0)
-                cdunidade      = item["cdunidade"]
-                operador_item  = item.get("operador") or body.operador or ""
-                nome_produto   = item["produto"] or f"#{cdproduto}"
-                qtdeentrega    = qtde_entrega_map.get(cdproduto, 0.0)
+                cdproduto     = item["cdproduto"]
+                cdproduto_str = item["cdproduto_str"]
+                qtde_contada  = float(item["qtde_contada"] or 0)
+                # PERF-2: usa mapa pré-buscado
+                qtde_atual    = float(item.get("qtdeatual_snap") or movimento_qtde.get(cdproduto_str, 0))
+                fatorconv     = float(item["fatorconv"] or 1)
+                vlcusto       = float(item["vlcusto"] or 0)
+                cdunidade     = item["cdunidade"]
+                operador_item = item.get("operador") or body.operador or ""
+                nome_produto  = item["produto"] or f"#{cdproduto}"
+                qtdeentrega   = qtde_entrega_map.get(cdproduto, 0.0)
 
                 qtdanterior = qtde_atual + qtdeentrega
 
                 if qtdeentrega > 0:
-                    # GravarMov_Produto_Entrega: há pedido pendente, QTSAIDA absorve a entrega
                     if qtde_contada > qtde_atual:
                         qtentrada = qtde_contada - qtde_atual
                         qtsaida   = qtdeentrega
@@ -503,7 +800,6 @@ def consolidar_inventario(
                         qtsaida   = qtdeentrega
                     vl_perda_ganho = None
                 else:
-                    # GravarMov_Produto: sem pedido pendente, ajuste simples
                     if qtde_contada > qtde_atual:
                         qtentrada = qtde_contada - qtde_atual
                         qtsaida   = 0.0
@@ -523,8 +819,7 @@ def consolidar_inventario(
                         "diferenca": qtde_contada - qtdanterior,
                     })
 
-                # INSERT em MOV_PRODUTO — trigger TG_ID_MOV_PRODUTO gera IDMOVIMENTO automaticamente;
-                # trigger TG_INSERT_MOV_PRODUTO atualiza MOVIMENTO.QTDEATUAL via QTDE_MOVIMENTO.
+                # BANCO-4: usa IDEMPRESA do servidor (.env), não do cliente
                 if vl_perda_ganho is not None:
                     cur2.execute(
                         "INSERT INTO MOV_PRODUTO "
@@ -533,7 +828,7 @@ def consolidar_inventario(
                         "QTDINVENTARIO, QTDANTERIOR, VL_PERDA_GANHO, SIST_ALT) "
                         "VALUES (?, ?, ?, 5, '0000', CURRENT_DATE, 'Ajuste na Tela de Inventário', "
                         "?, ?, ?, ?, ?, ?, ?, ?, ?, 'INV_APP')",
-                        (body.idempresa, cdproduto_str, body.cddeposito, fatorconv,
+                        (IDEMPRESA, cdproduto_str, body.cddeposito, fatorconv,
                          qtentrada, qtsaida, idusuario, cdunidade, idinventario,
                          qtde_contada, qtdanterior, vl_perda_ganho),
                     )
@@ -545,25 +840,47 @@ def consolidar_inventario(
                         "QTDINVENTARIO, QTDANTERIOR, SIST_ALT) "
                         "VALUES (?, ?, ?, 5, '0000', CURRENT_DATE, 'Ajuste na Tela de Inventário', "
                         "?, ?, ?, ?, ?, ?, ?, ?, 'INV_APP')",
-                        (body.idempresa, cdproduto_str, body.cddeposito, fatorconv,
+                        (IDEMPRESA, cdproduto_str, body.cddeposito, fatorconv,
                          qtentrada, qtsaida, idusuario, cdunidade, idinventario,
                          qtde_contada, qtdanterior),
                     )
 
-            cur2.execute(
-                "DELETE FROM INVENTARIO_TEMP WHERE CDDEPOSITO = ?",
-                (body.cddeposito,),
-            )
+            if body.session_id:
+                # BANCO-3: filtra ORIGEM='INVEC' para não apagar dados do Automec
+                cur2.execute(
+                    "DELETE FROM INVENTARIO_TEMP "
+                    "WHERE CDDEPOSITO = ? AND SESSION_ID = ? AND (ORIGEM = 'INVEC' OR ORIGEM IS NULL)",
+                    (body.cddeposito, body.session_id),
+                )
+                cur2.execute(
+                    "UPDATE INVENTARIO_SESSAO SET STATUS = 'CONSOLIDADA', FIM = CURRENT_TIMESTAMP "
+                    "WHERE SESSION_ID = ?",
+                    (body.session_id,),
+                )
+                db_lock_acquired = False  # não precisa restaurar no finally
+            else:
+                cur2.execute(
+                    "DELETE FROM INVENTARIO_TEMP "
+                    "WHERE CDDEPOSITO = ? AND SESSION_ID IS NULL AND ORIGEM = 'INVEC'",
+                    (body.cddeposito,),
+                )
 
-        supervisor_label = f" (supervisor: {body.supervisor_login})" if body.supervisor_login else ""
-        _registrar_log(
-            "CONSOLIDACAO",
-            login_usuario=current_user.get("login", ""),
-            cddeposito=body.cddeposito,
-            operador=body.operador,
-            qtde_depois=float(total),
-            motivo=f"{total} itens · {divergencias} divergências{supervisor_label} · inv#{idinventario}",
-        )
+            supervisor_label = f" (supervisor: {supervisor_login_validado})" if supervisor_login_validado else ""
+            if teve_edicoes and not divergencias:
+                supervisor_label += " [edições detectadas na sessão]"
+
+            cur2.execute(
+                """
+                INSERT INTO LOG_INVENTARIO
+                    (TIPO, CDDEPOSITO, OPERADOR, LOGIN_USUARIO, QTDE_DEPOIS, MOTIVO, SESSION_ID, DATA_HORA)
+                VALUES ('CONSOLIDACAO', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (body.cddeposito, body.operador, current_user.get("login", ""),
+                 float(total),
+                 f"{total} itens · {divergencias} divergências{supervisor_label} · inv#{idinventario}"
+                 + (f" · session={body.session_id}" if body.session_id else ""),
+                 body.session_id),
+            )
 
         _salvar_relatorio(
             cddeposito=body.cddeposito,
@@ -571,7 +888,7 @@ def consolidar_inventario(
             login_usuario=current_user.get("login", ""),
             total=total,
             divergencias=divergencias,
-            supervisor=body.supervisor_login or "",
+            supervisor=supervisor_login_validado or "",
             itens_divergentes=itens_divergentes,
         )
 
@@ -587,6 +904,17 @@ def consolidar_inventario(
     finally:
         with _consolidando_lock:
             _consolidando.discard(body.cddeposito)
+        # BANCO-1: restaura STATUS='ABERTA' se o lock de banco foi adquirido mas a consolidação falhou
+        if db_lock_acquired and body.session_id:
+            try:
+                with get_connection() as con:
+                    cur = con.cursor()
+                    cur.execute(
+                        "UPDATE INVENTARIO_SESSAO SET STATUS = 'ABERTA' WHERE SESSION_ID = ? AND STATUS = 'CONSOLIDANDO'",
+                        (body.session_id,),
+                    )
+            except Exception:
+                pass
 
 
 @router.get("/historico/{cddeposito}", response_model=list[ItemHistorico])
@@ -594,9 +922,8 @@ def historico_inventario(
     cddeposito: int,
     current_user: dict = Depends(get_current_user),
 ):
-    # Usa MOV_PRODUTO (SIST_ALT='INV_APP') em vez de INVENTARIO para evitar o
-    # problema do trigger TGUP_INVENTARIO_DTALTER que sobrescreve SIST_ALT para
-    # 'LOCAL' em todo UPDATE, fazendo itens re-inventariados desaparecerem do histórico.
+    _verificar_acesso_deposito(current_user, cddeposito)
+
     with get_connection() as con:
         cur = con.cursor()
         cur.execute(
@@ -608,13 +935,19 @@ def historico_inventario(
                 D.DEPOSITO,
                 MP.QTDINVENTARIO    AS QTDE_CONTADA,
                 MP.QTDANTERIOR      AS QTDE_SISTEMA,
-                MP.DTMOVIMENTO      AS DATA,
+                COALESCE(
+                    (SELECT FIRST 1 LI.DATA_HORA
+                     FROM LOG_INVENTARIO LI
+                     WHERE LI.TIPO = 'CONSOLIDACAO'
+                       AND LI.CDDEPOSITO = MP.CDDEPOSITO
+                       AND LI.MOTIVO CONTAINING ('inv#' || CAST(MP.IDINVENTARIO AS VARCHAR(10)))
+                     ORDER BY LI.DATA_HORA DESC),
+                    CAST(MP.DTMOVIMENTO AS TIMESTAMP)
+                )                   AS DATA,
                 MP.HISTORICO        AS OPERADOR
             FROM MOV_PRODUTO MP
-            JOIN PRODUTO P
-                ON CAST(P.CDPRODUTO AS VARCHAR(10)) = MP.CDPRODUTO
-            JOIN DEPOSITO D
-                ON D.CDDEPOSITO = MP.CDDEPOSITO
+            JOIN PRODUTO P ON CAST(P.CDPRODUTO AS VARCHAR(10)) = MP.CDPRODUTO
+            JOIN DEPOSITO D ON D.CDDEPOSITO = MP.CDDEPOSITO
             WHERE MP.CDDEPOSITO = ?
               AND MP.SIST_ALT = 'INV_APP'
               AND MP.TIPOMOVIMENTO = 5
@@ -631,36 +964,51 @@ def remover_bipagem(
     cddeposito: int,
     motivo: Optional[str] = Query(default=None),
     device_id: Optional[str] = Query(default=None),
+    session_id: Optional[str] = Query(default=None),
     current_user: dict = Depends(get_current_user),
 ):
+    _verificar_acesso_deposito(current_user, cddeposito)
+
     if not motivo or not motivo.strip():
         raise HTTPException(status_code=400, detail="Motivo é obrigatório para excluir uma bipagem")
 
     existente = None
     with get_connection() as con:
         cur = con.cursor()
-        cur.execute(
-            "SELECT IT.QTDE, P.PRODUTO FROM INVENTARIO_TEMP IT "
-            "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
-            "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ?",
-            (cdproduto, cddeposito),
-        )
+        if session_id:
+            cur.execute(
+                "SELECT IT.QTDE, P.PRODUTO FROM INVENTARIO_TEMP IT "
+                "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
+                "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ? AND IT.SESSION_ID = ?",
+                (cdproduto, cddeposito, session_id),
+            )
+        else:
+            cur.execute(
+                "SELECT IT.QTDE, P.PRODUTO FROM INVENTARIO_TEMP IT "
+                "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
+                "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ? AND IT.SESSION_ID IS NULL",
+                (cdproduto, cddeposito),
+            )
         existente = fetchone_as_dict(cur)
-        cur.execute(
-            "DELETE FROM INVENTARIO_TEMP WHERE CDPRODUTO = ? AND CDDEPOSITO = ?",
-            (cdproduto, cddeposito),
-        )
+        if session_id:
+            cur.execute(
+                "DELETE FROM INVENTARIO_TEMP WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ?",
+                (cdproduto, cddeposito, session_id),
+            )
+        else:
+            cur.execute(
+                "DELETE FROM INVENTARIO_TEMP WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID IS NULL",
+                (cdproduto, cddeposito),
+            )
 
     if existente:
         _registrar_log(
             "EXCLUSAO",
             login_usuario=current_user.get("login", ""),
-            cddeposito=cddeposito,
-            cdproduto=cdproduto,
+            cddeposito=cddeposito, cdproduto=cdproduto,
             produto=existente.get("produto"),
             qtde_antes=existente.get("qtde"),
-            motivo=motivo,
-            device_id=device_id,
+            motivo=motivo, device_id=device_id, session_id=session_id,
         )
 
     return {"mensagem": "Bipagem removida"}
@@ -672,49 +1020,69 @@ def editar_bipagem(
     body: EditarBipagemRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    _verificar_acesso_deposito(current_user, body.cddeposito)
+
     if body.qtde < 0:
         raise HTTPException(status_code=400, detail="Quantidade não pode ser negativa")
     anterior = None
     snap = None
     with get_connection() as con:
         cur = con.cursor()
-        cur.execute(
-            "SELECT IT.QTDE, IT.QTDEATUAL_SNAP, P.PRODUTO FROM INVENTARIO_TEMP IT "
-            "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
-            "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ?",
-            (cdproduto, body.cddeposito),
-        )
+        if body.session_id:
+            cur.execute(
+                "SELECT IT.QTDE, IT.QTDEATUAL_SNAP, P.PRODUTO FROM INVENTARIO_TEMP IT "
+                "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
+                "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ? AND IT.SESSION_ID = ?",
+                (cdproduto, body.cddeposito, body.session_id),
+            )
+        else:
+            cur.execute(
+                "SELECT IT.QTDE, IT.QTDEATUAL_SNAP, P.PRODUTO FROM INVENTARIO_TEMP IT "
+                "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
+                "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ? AND IT.SESSION_ID IS NULL",
+                (cdproduto, body.cddeposito),
+            )
         anterior = fetchone_as_dict(cur)
         if not anterior:
             raise HTTPException(status_code=404, detail="Item não encontrado na contagem")
         snap = anterior.get("qtdeatual_snap")
-        cur.execute(
-            "UPDATE INVENTARIO_TEMP SET QTDE = ? WHERE CDPRODUTO = ? AND CDDEPOSITO = ?",
-            (body.qtde, cdproduto, body.cddeposito),
-        )
+        if body.session_id:
+            cur.execute(
+                "UPDATE INVENTARIO_TEMP SET QTDE = ? WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ?",
+                (body.qtde, cdproduto, body.cddeposito, body.session_id),
+            )
+        else:
+            cur.execute(
+                "UPDATE INVENTARIO_TEMP SET QTDE = ? WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID IS NULL",
+                (body.qtde, cdproduto, body.cddeposito),
+            )
 
     qtde_antes = anterior.get("qtde") if anterior else None
     produto_nome = anterior.get("produto") if anterior else None
 
-    # Padrão suspeito: edição faz a contagem coincidir exatamente com o estoque do sistema.
-    # Indica possível tentativa de ocultar divergência real.
     tipo_log = "EDICAO"
     motivo_extra = ""
+
+    # Padrão suspeito: edição faz coincidir exatamente com o sistema
     if snap is not None and abs(body.qtde - float(snap)) < 0.001 and qtde_antes is not None:
         if abs(float(qtde_antes) - float(snap)) > 0.001:
             tipo_log = "EDICAO_SUSPEITA"
             motivo_extra = f" [ALERTA: contagem editada de {qtde_antes:.0f} para {body.qtde:.0f} coincidindo com sistema ({snap:.0f})]"
 
+    # FRAUDE-1: redução > 30% por operador também é suspeita
+    if tipo_log == "EDICAO" and qtde_antes is not None and float(qtde_antes) > 0:
+        reducao = (float(qtde_antes) - body.qtde) / float(qtde_antes)
+        if reducao > 0.30 and (current_user.get("idgrupo") or 3) == 3:
+            tipo_log = "EDICAO_SUSPEITA"
+            motivo_extra = f" [ALERTA: operador reduziu {reducao:.0%} da quantidade ({qtde_antes:.0f}→{body.qtde:.0f})]"
+
     _registrar_log(
         tipo_log,
         login_usuario=current_user.get("login", ""),
-        cddeposito=body.cddeposito,
-        cdproduto=cdproduto,
-        produto=produto_nome,
-        qtde_antes=qtde_antes,
-        qtde_depois=body.qtde,
+        cddeposito=body.cddeposito, cdproduto=cdproduto,
+        produto=produto_nome, qtde_antes=qtde_antes, qtde_depois=body.qtde,
         motivo=(body.motivo or "") + motivo_extra,
-        device_id=body.device_id,
+        device_id=body.device_id, session_id=body.session_id,
     )
 
     return {"mensagem": f"Quantidade atualizada para {body.qtde}"}
@@ -726,8 +1094,11 @@ def log_auditoria(
     limit: int = Query(default=200, le=500),
     current_user: dict = Depends(get_current_user),
 ):
-    if (current_user.get("idgrupo") or 3) not in (1, 2):
-        raise HTTPException(status_code=403, detail="Apenas gerentes e administradores podem acessar o log de auditoria")
+    # fallback para tokens antigos que não têm idgrupo — deriva do campo role
+    _role = current_user.get("role", "operador")
+    idgrupo = current_user.get("idgrupo") or (1 if _role == "admin" else 2 if _role == "gerente" else 3)
+    if idgrupo not in (1, 2):
+        raise HTTPException(status_code=403, detail="Apenas gerentes e administradores podem acessar o log")
     try:
         with get_connection() as con:
             cur = con.cursor()

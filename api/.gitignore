@@ -1,25 +1,37 @@
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyd
 .Python
 env/
 venv/
 .venv/
+*.egg-info/
 dist/
 build/
 
-# Segredos — NUNCA commitar
+# Ambiente e segredos
 .env
 *.env
+config.ini
+*.cfg
+
+# Licença — NUNCA subir para o GitHub
 licenca_privada.pem
 gerar_licenca.py
 
-# Banco de dados
+# Banco de dados local
 *.FDB
 *.fdb
 *.gdb
 
-# Executáveis bundlados
-*.exe
-nssm.exe
+# Executáveis bundlados / instaladores
 WinSW.exe
+nssm.exe
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp

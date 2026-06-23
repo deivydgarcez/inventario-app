@@ -20,7 +20,7 @@ else:
     SECRET_KEY = _raw_secret
 
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", 480))
+EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", 2880))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 

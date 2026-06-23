@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -49,6 +49,7 @@ class BipagemRequest(BaseModel):
     qtde: float
     operador: Optional[str] = None
     device_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class BipagemResponse(BaseModel):
@@ -65,6 +66,7 @@ class EditarBipagemRequest(BaseModel):
     cddeposito: int
     motivo: Optional[str] = None
     device_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class ItemRelatorio(BaseModel):
@@ -82,8 +84,9 @@ class ConsolidarRequest(BaseModel):
     operador: Optional[str] = None
     supervisor_login: Optional[str] = None
     supervisor_senha: Optional[str] = None
+    supervisor_token: Optional[str] = None
     recontagem_confirmada: bool = False
-    idempresa: int = 1
+    session_id: Optional[str] = None
 
 
 class ItemHistorico(BaseModel):
@@ -127,3 +130,67 @@ class LogItem(BaseModel):
     motivo: Optional[str] = None
     device_id: Optional[str] = None
     data_hora: Optional[datetime] = None
+
+
+# ── Sessão offline ────────────────────────────────────────────────────────────
+
+class IniciarSessaoRequest(BaseModel):
+    session_id: str
+    cddeposito: int
+    operador: Optional[str] = None
+
+
+class SessaoResponse(BaseModel):
+    session_id: str
+    cddeposito: int
+    operador: Optional[str] = None
+    usuario: Optional[str] = None
+    status: str
+    inicio: Optional[datetime] = None
+
+
+# ── Sync de lote offline ──────────────────────────────────────────────────────
+
+class BipagemLoteItem(BaseModel):
+    cdproduto: int
+    produto: str
+    qtde: float
+    qtde_sistema: float
+    operador: Optional[str] = None
+    device_id: Optional[str] = None
+    timestamp: Optional[int] = None
+
+
+class LoteBipagemRequest(BaseModel):
+    session_id: str
+    cddeposito: int
+    bipagens: List[BipagemLoteItem]
+    lote_id: Optional[str] = None
+
+
+class LoteSyncResponse(BaseModel):
+    sincronizados: int
+    alertas: List[str] = []
+
+
+# ── Supervisor pré-autenticação (SEC-2) ──────────────────────────────────────
+
+class SupervisorPreAuthRequest(BaseModel):
+    login: str
+    senha: str
+
+
+# ── Catálogo offline ──────────────────────────────────────────────────────────
+
+class ProdutoCatalogoItem(BaseModel):
+    cdproduto: int
+    produto: str
+    codigobarra: Optional[str] = None
+    qtdeatual: Optional[float] = None
+
+
+class CatalogoResponse(BaseModel):
+    itens: List[ProdutoCatalogoItem]
+    total: int
+    pagina: int
+    paginas: int

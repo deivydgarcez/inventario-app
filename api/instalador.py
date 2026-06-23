@@ -45,14 +45,15 @@ class App:
         self.root.resizable(False, False)
         self.root.configure(bg="#F5F5F5")
 
-        self.v_install = tk.StringVar(value=DEFAULT_DIR)
-        self.v_db      = tk.StringVar()
-        self.v_host    = tk.StringVar(value="localhost")
-        self.v_user    = tk.StringVar(value="SYSDBA")
-        self.v_pass    = tk.StringVar(value="masterkey")
-        self.v_port    = tk.StringVar(value="8000")
-        self.v_license = tk.StringVar()
-        self.v_status  = tk.StringVar(value="Aguardando...")
+        self.v_install    = tk.StringVar(value=DEFAULT_DIR)
+        self.v_db         = tk.StringVar()
+        self.v_host       = tk.StringVar(value="localhost")
+        self.v_user       = tk.StringVar(value="SYSDBA")
+        self.v_pass       = tk.StringVar(value="masterkey")
+        self.v_port       = tk.StringVar(value="8000")
+        self.v_idempresa  = tk.StringVar(value="1")
+        self.v_license    = tk.StringVar()
+        self.v_status     = tk.StringVar(value="Aguardando...")
 
         self._build_ui()
         self._load_existing_env()
@@ -111,6 +112,10 @@ class App:
 
         row_label(r, "Porta da API:")
         ttk.Entry(f, textvariable=self.v_port, width=8).grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
+        r += 1
+
+        row_label(r, "ID da Empresa (IDEMPRESA):")
+        ttk.Entry(f, textvariable=self.v_idempresa, width=8).grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
         r += 1
 
         ttk.Separator(f, orient=tk.HORIZONTAL).grid(row=r, column=0, columnspan=2, sticky=tk.EW, pady=6)
@@ -177,6 +182,7 @@ class App:
                     'FB_USER':     self.v_user,
                     'FB_PASSWORD': self.v_pass,
                     'PORT':        self.v_port,
+                    'IDEMPRESA':   self.v_idempresa,
                     'LICENSE_KEY': self.v_license,
                 }
                 if k in mapping:
@@ -197,15 +203,39 @@ class App:
             self._set_status("Servico nao instalado. Configure os campos e clique em Instalar.")
 
     def _write_env(self, install_dir: str):
-        with open(os.path.join(install_dir, ".env"), "w", encoding="utf-8") as fh:
+        env_path = os.path.join(install_dir, ".env")
+        # Preserva JWT_SECRET existente; gera novo se não houver
+        jwt_secret = ""
+        if os.path.exists(env_path):
+            with open(env_path, encoding="utf-8") as fh:
+                for line in fh:
+                    if line.startswith("JWT_SECRET="):
+                        jwt_secret = line.strip()[len("JWT_SECRET="):]
+                        break
+        if not jwt_secret:
+            import secrets
+            jwt_secret = secrets.token_hex(32)
+        with open(env_path, "w", encoding="utf-8") as fh:
             fh.write(
                 f"FB_DATABASE={self.v_db.get()}\n"
                 f"FB_HOST={self.v_host.get()}\n"
                 f"FB_USER={self.v_user.get()}\n"
                 f"FB_PASSWORD={self.v_pass.get()}\n"
                 f"PORT={self.v_port.get()}\n"
+                f"IDEMPRESA={self.v_idempresa.get() or '1'}\n"
                 f"LICENSE_KEY={self.v_license.get()}\n"
+                f"JWT_SECRET={jwt_secret}\n"
             )
+        # INST-2: restringe leitura do .env para SYSTEM + Administrators (remove acesso de Others)
+        try:
+            subprocess.run(
+                ["icacls", env_path, "/inheritance:r",
+                 "/grant:r", "SYSTEM:(R)",
+                 "/grant:r", "Administrators:(F)"],
+                capture_output=True, check=False,
+            )
+        except Exception:
+            pass
 
     def _locate_nssm(self, install_dir: str) -> str | None:
         candidates = [
@@ -265,6 +295,13 @@ class App:
         if not self.v_license.get().strip():
             messagebox.showerror("Erro", "Informe a Chave de Licenca.\n\nSolicite a chave para a Pontual Tecnologia.")
             return
+        try:
+            porta_int = int(self.v_port.get())
+            if not (1 <= porta_int <= 65535):
+                raise ValueError()
+        except ValueError:
+            messagebox.showerror("Erro", "Porta invalida. Use um numero entre 1 e 65535 (padrao: 8000).")
+            return
         if not is_admin():
             messagebox.showerror(
                 "Permissao necessaria",
@@ -274,6 +311,25 @@ class App:
             return
         self.btn_install.config(state=tk.DISABLED)
         threading.Thread(target=self._install_worker, daemon=True).start()
+
+    def _test_firebird(self) -> str | None:
+        """INST-1: testa conexão com o banco antes de registrar o serviço.
+        Retorna mensagem de erro ou None se OK."""
+        try:
+            import firebirdsql
+            con = firebirdsql.connect(
+                host=self.v_host.get(),
+                database=self.v_db.get(),
+                user=self.v_user.get(),
+                password=self.v_pass.get(),
+                port=3050,
+            )
+            con.close()
+            return None
+        except ImportError:
+            return None  # módulo não disponível no contexto do instalador — pula validação
+        except Exception as e:
+            return str(e)
 
     def _install_worker(self):
         install_dir = self.v_install.get()
@@ -288,6 +344,19 @@ class App:
 
             self._set_status("Salvando configuracao (.env)...")
             self._write_env(install_dir)
+
+            # INST-1: valida conexão com Firebird antes de continuar
+            self._set_status("Testando conexao com o banco de dados Firebird...")
+            fb_erro = self._test_firebird()
+            if fb_erro:
+                self._set_status(f"Falha ao conectar ao banco: {fb_erro}", "#C62828")
+                if not messagebox.askyesno(
+                    "Aviso: banco inacessivel",
+                    f"Nao foi possivel conectar ao banco Firebird:\n\n{fb_erro}\n\n"
+                    "Verifique o caminho, host e credenciais.\n\n"
+                    "Deseja instalar mesmo assim? O servico pode nao iniciar corretamente.",
+                ):
+                    return
 
             self._set_status("Verificando NSSM...")
             nssm = self._locate_nssm(install_dir)
@@ -328,15 +397,53 @@ class App:
             subprocess.run([
                 "netsh", "advfirewall", "firewall", "add", "rule",
                 f"name={SERVICE_NAME}", "dir=in", "action=allow",
-                "protocol=TCP", f"localport={porta}", "profile=any",
+                "protocol=TCP", f"localport={porta}", "profile=private,domain",
             ], capture_output=True)
 
             self._set_status("Iniciando servico...")
             subprocess.run([nssm, "start", SERVICE_NAME])
 
-            self._set_status(
-                f"Instalado com sucesso! Servico rodando em http://localhost:{porta}", "#2E7D32"
-            )
+            # INST-5: aguarda e verifica se o servidor respondeu (inclui verificação de migrations)
+            self._set_status("Aguardando servidor iniciar...")
+            import time, urllib.request, urllib.error
+            api_ok = False
+            for _ in range(12):  # até 12s
+                time.sleep(1)
+                try:
+                    urllib.request.urlopen(f"http://localhost:{porta}/ping", timeout=2)
+                    api_ok = True
+                    break
+                except Exception:
+                    pass
+
+            if api_ok:
+                self._set_status(
+                    f"Instalado com sucesso! Servico rodando em http://localhost:{porta}", "#2E7D32"
+                )
+            else:
+                log_erro = os.path.join(install_dir, "logs", "erro.log")
+                trecho = ""
+                if os.path.exists(log_erro):
+                    try:
+                        with open(log_erro, encoding="utf-8", errors="replace") as lf:
+                            linhas = lf.readlines()
+                            trecho = "".join(linhas[-20:]) if linhas else ""
+                    except Exception:
+                        pass
+                msg_extra = f"\n\nUltimas linhas do log de erros:\n{trecho}" if trecho else ""
+                self._set_status(
+                    "Servico iniciado mas API nao respondeu. Verifique os logs.", "#E65100"
+                )
+                messagebox.showwarning(
+                    "Atencao: servidor nao respondeu",
+                    f"O servico foi registrado, mas a API nao respondeu no ping em http://localhost:{porta}/ping\n\n"
+                    f"Possiveis causas:\n"
+                    f"  - Erro nas migrations (verifique {log_erro})\n"
+                    f"  - Banco de dados inacessivel\n"
+                    f"  - Licenca invalida\n"
+                    f"{msg_extra}"
+                )
+
             fechar = messagebox.askyesno(
                 "Instalacao concluida",
                 f"Servico instalado e iniciado com sucesso!\n\n"
