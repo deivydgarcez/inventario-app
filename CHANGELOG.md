@@ -1,5 +1,100 @@
 # CHANGELOG — Invec
 
+## [1.3.0] — 2026-06-23
+
+### Segurança, integridade offline e correções do instalador
+
+---
+
+#### Segurança — Backend
+
+**`app/routers/inventario.py`**
+- **CRÍTICO — fail-open corrigido em `_verificar_acesso_deposito`**: qualquer exceção de banco abria acesso ao depósito; agora só ignora erros de tabela inexistente (migration pendente), demais erros negam acesso
+- **CRÍTICO — rate limiting em `POST /supervisor/pre-auth`**: endpoint de pré-autenticação do supervisor não tinha proteção contra brute force; adicionado mesmo esquema do login (5 tentativas/60s, bloqueio 5 min) via `_sup_tentativas/_sup_bloqueados`
+
+**`app/routers/auth.py`**
+- **`DELETE LOGIN_FALHOU` preserva histórico de ataques**: ao logar com sucesso, apagava TODOS os registros de falha do usuário; agora apaga apenas os da janela de bloqueio (`_DB_JANELA_MINUTOS`), mantendo evidências de ataques anteriores
+
+**`app/database.py`**
+- **Aviso de senha padrão no startup**: se `FB_PASSWORD` não estiver configurado no `.env`, exibe aviso visível no log em vez de falhar silenciosamente com `masterkey`
+
+---
+
+#### Integridade Offline — Backend
+
+**`app/migrations.py`**
+- **Nova tabela `SCANS_PROCESSADOS`**: deduplicação de scans individuais por `scan_id` (UUID) — evita duplicata quando scan online sofre timeout de rede e é reenviado
+- **Nova tabela `LOTES_SYNC_PROCESSADOS`**: deduplicação de lotes de sync offline por `lote_id`
+- **`_reset_sessoes_consolidando()`**: reseta sessões com `STATUS='CONSOLIDANDO'` para `'ABERTA'` no startup — evita travamento permanente após restart do servidor durante consolidação
+- **`_limpar_idempotencia_antiga()`**: remove registros de `SCANS_PROCESSADOS` e `LOTES_SYNC_PROCESSADOS` com mais de 90 dias — evita crescimento indefinido das tabelas
+- **Ordenação corrigida em `run_migrations()`**: `_migrar_lotes_processados` e `_migrar_usuario_deposito` chamados antes de `_migrar_indices_log` — corrige falha em instalação nova onde índices eram criados antes das tabelas existirem
+
+**`app/routers/inventario.py`**
+- **`POST /bipagem/lote` rejeita sessões encerradas**: verifica `STATUS` da sessão antes de processar — retorna 409 se `ENCERRADA` ou `CONSOLIDADA`; previne inserção de dados em `INVENTARIO_TEMP` que nunca seriam consolidados
+- **`registrar_bipagem`: idempotente por `scan_id`**: retorna quantidade atual sem inserir se `scan_id` já foi processado
+- **`sincronizar_lote`: desconta `scan_ids` já processados** antes de somar `QTDE` — evita duplicação em sincronização offline
+
+**`app/models/schemas.py`**
+- `BipagemRequest`: campo `scan_id: Optional[str]` adicionado
+- `BipagemLoteItem`: campo `scan_ids: Optional[List[str]]` adicionado
+
+---
+
+#### Integridade Offline — Android
+
+**`data/db/InvecDatabase.kt`** — versão 3
+- Coluna `scan_id TEXT NOT NULL DEFAULT ''` adicionada em `bipagens_pendentes`
+- `onUpgrade`: `ALTER TABLE bipagens_pendentes ADD COLUMN scan_id`
+- `BipagPendente.scanId: String = ""` — UUID gerado em `ScannerActivity` antes do insert
+- `atualizarQtdeProduto`: **DELETE substitui UPDATE** — fix de bug onde scans antigos ficavam marcados como sincronizados sem ser deletados, fazendo `getRelatorioOffline` somar valores duplicados (BUG-5)
+
+**`util/SyncManager.kt`**
+- Coleta `scan_ids` por produto ao montar lote para envio
+
+**`ui/scanner/ScannerActivity.kt`**
+- `registrarBipagem`: try-catch com `resetarEstado()` no catch — scanner não trava mais se Room falhar durante insert
+- UUID de `scan_id` gerado antes do insert em Room
+
+**`ui/MainActivity.kt`** + **`ui/TimeoutActivity.kt`**
+- `deleteAllDaSessao(sessionId)` chamado antes de `session.logout()` em todos os paths (online, offline e timeout) — elimina dados fantasmas no sync pós-logout
+
+**`ui/recontagem/RecontagemActivity.kt`**
+- `carregarItens()`: variável `erroHttp` — erros 4xx/5xx do servidor não causam mais fallback silencioso para cache local; exibe toast de erro
+
+---
+
+#### Instalador — `instalador.py` + `instalador.spec`
+
+- **Firewall `profile=any`**: regra criada para todos os perfis de rede (Privado, Domínio e Público) — corrige falha de conectividade em máquinas com rede classificada como Pública pelo Windows
+- **`_test_firebird` corrigido**: usava `firebirdsql` (driver errado) causando `ImportError` silencioso e pulando validação em 100% das instalações; corrigido para `firebird.driver`
+- **`_test_porta`**: verifica se a porta já está em uso antes de registrar o serviço; exibe erro claro em vez de instalar e falhar silenciosamente
+- **`instalador.spec`**: `hiddenimports` para `firebird.driver` e `firebird.driver.core`
+
+---
+
+#### Arquivos criados / modificados
+
+**Backend:**
+- `app/migrations.py` — tabelas `SCANS_PROCESSADOS`, `LOTES_SYNC_PROCESSADOS`; `_reset_sessoes_consolidando`; `_limpar_idempotencia_antiga`; ordenação de migrations corrigida
+- `app/routers/inventario.py` — idempotência scan_id/lote_id; rejeição de sessões encerradas; rate limit supervisor; fail-open corrigido
+- `app/routers/auth.py` — DELETE LOGIN_FALHOU preserva histórico
+- `app/database.py` — aviso FB_PASSWORD padrão
+- `app/models/schemas.py` — campos scan_id e scan_ids
+
+**Android:**
+- `data/db/InvecDatabase.kt` — v3 com scan_id; fix BUG-5 DELETE→UPDATE
+- `util/SyncManager.kt` — coleta scan_ids por produto
+- `ui/scanner/ScannerActivity.kt` — try-catch Room + geração de scan_id
+- `ui/MainActivity.kt` — deleteAllDaSessao no logout
+- `ui/TimeoutActivity.kt` — deleteAllDaSessao no timeout
+- `ui/recontagem/RecontagemActivity.kt` — erroHttp fallback
+
+**Instalador:**
+- `instalador.py` — profile=any; _test_firebird; _test_porta
+- `instalador.spec` — hiddenimports firebird.driver
+
+---
+
 ## [1.2.0] — 2026-06-22
 
 ### Modo offline-first + correções de bugs
