@@ -206,11 +206,50 @@ python gerar_licenca.py
 
 | Tabela / Coluna | Definição e propósito |
 |---|---|
-| `INVENTARIO_TEMP` | Sessão de contagem em andamento. Colunas: `CDDEPOSITO`, `CDPRODUTO`, `PRODUTO`, `QTDE`, `QTDEATUAL_SNAP` (snapshot no 1º scan), `OPERADOR`, `DATA_HORA`. |
+| `INVENTARIO_TEMP` | Bipagens em andamento. Colunas: `CDDEPOSITO`, `CDPRODUTO`, `PRODUTO`, `QTDE`, `QTDEATUAL_SNAP` (snapshot no 1º scan), `OPERADOR`, `SESSION_ID` (UUID do dispositivo), `DATA_HORA`. |
+| `INVENTARIO_SESSAO` | Sessões por dispositivo. Colunas: `SESSION_ID` (PK), `CDDEPOSITO`, `OPERADOR`, `USUARIO`, `STATUS` (`ABERTA`/`CONSOLIDANDO`/`CONSOLIDADA`), `INICIO`, `FIM`. |
+| `LOTES_PROCESSADOS` | Idempotência do sync offline. Armazena `LOTE_ID` UUID dos lotes já processados — evita duplicar bipagens em retransmissões. |
 | `OPERADORES_APP` | Cadastro de operadores físicos. Colunas: `ID` (autoincrement), `NOME`, `ATIVO`. |
-| `LOG_INVENTARIO` | Auditoria completa. Colunas: `ID`, `TIPO`, `CDDEPOSITO`, `CDPRODUTO`, `PRODUTO`, `OPERADOR`, `LOGIN_USUARIO`, `QTDE_ANTES`, `QTDE_DEPOIS`, `MOTIVO`, `DEVICE_ID`, `DATA_HORA`. |
+| `LOG_INVENTARIO` | Auditoria completa. Colunas: `ID`, `TIPO`, `CDDEPOSITO`, `CDPRODUTO`, `PRODUTO`, `OPERADOR`, `LOGIN_USUARIO`, `QTDE_ANTES`, `QTDE_DEPOIS`, `MOTIVO`, `DEVICE_ID`, `SESSION_ID`, `DATA_HORA (TIMESTAMP)`. |
+| `USUARIO_DEPOSITO` | Restrição de acesso por depósito. Colunas: `IDUSUARIO`, `CDDEPOSITO` (PK composta). |
 | `USUARIOS.SENHAMOBILE` | Hash bcrypt da senha mobile. `NULL` = usuário sem acesso ao app. |
-| `USUARIOS.MOBILE_ADMIN` | `CHAR(1)` `'S'/'N'` — flag de administração mobile. |
+| `USUARIOS.MOBILE_ADMIN` | `SMALLINT` — flag de administração mobile (`1`=ativo). |
+
+---
+
+## Modo Offline-First
+
+O app suporta operação sem conexão contínua com o servidor.
+
+### Conectividade — ServerMonitor
+
+`util/ServerMonitor.kt` pinga `GET /ping` a cada 30 segundos. Expõe `StateFlow<Boolean> isOnline` observado por todas as Activities. Chip "● Online" / "● Offline" no topo do Relatório muda em tempo real.
+
+### Scan offline
+
+1. Usuário escaneia produto
+2. App tenta `POST /inventario/bipagem` (se online)
+3. Se offline (ou falha de rede): grava na tabela Room `bipagens_pendentes` com `sincronizado=false`
+4. `QTDEATUAL_SNAP` é capturado no 1º scan do produto (do servidor ou do cache local)
+5. Relatório offline: construído a partir das bipagens_pendentes no Room
+
+### Sincronização — SyncManager
+
+Quando o dispositivo fica online, `SyncManager.sincronizarPendentes()` é chamado:
+1. Lê todas as bipagens não sincronizadas do Room
+2. Agrupa por SESSION_ID e cdproduto (soma qtde)
+3. Envia `POST /inventario/bipagem/lote` com UUID de lote único
+4. Servidor verifica idempotência via `LOTES_PROCESSADOS` e processa
+5. Marca bipagens como sincronizadas no Room
+
+**Race condition prevenida**: `SyncManager` usa `Mutex` com `withLock` — carregamento do relatório aguarda sync em vez de pular.
+
+### Sessões por dispositivo
+
+Cada celular gera um `SESSION_ID` UUID ao entrar em um depósito. Isso permite:
+- Múltiplos coletores no mesmo depósito simultaneamente
+- Rastreabilidade completa: cada MOV_PRODUTO no Automec identifica de qual dispositivo veio
+- Consolidação independente por sessão
 
 ---
 
@@ -253,7 +292,7 @@ Leitores Bluetooth operam em modo HID (emulam teclado). O app usa um `EditText` 
 3. Calcula divergências: item diverge se `|qtde_contada − (qtdeatual + qtdeentrega)| > 0`
 4. Se `divergências ≥ 30%` e `total_itens ≥ 5` → retorna HTTP 422 "Recontagem obrigatória"
 5. Se há divergências → valida credenciais do supervisor (gerente/admin, diferente do operador)
-6. Adquire lock: `threading.Lock` + `set` de depósitos em consolidação. Retorna 409 se já está consolidando
+6. Lock no banco: atualiza `INVENTARIO_SESSAO.STATUS = 'CONSOLIDANDO'` — impede double-submit mesmo com reinicialização do servidor
 7. Gera `IDINVENTARIO` via `GEN_ID(GEN_MOV_PRODUTO, 1)`
 8. Para cada item: `INSERT` em `MOV_PRODUTO` com `TIPOMOVIMENTO=5` — trigger do Automec atualiza `MOVIMENTO.QTDEATUAL`
 9. `DELETE FROM INVENTARIO_TEMP` para o depósito na mesma transação
@@ -282,7 +321,7 @@ Pedidos faturados mas não entregues representam estoque fisicamente presente ma
 
 | Mecanismo | Implementação |
 |---|---|
-| Rate limit | 5 falhas em 60s → bloqueio 300s. Dicts em memória por IP e por login. Não persiste entre reinicializações. |
+| Rate limit | 5 falhas em 60s → bloqueio 300s. Dicts em memória por IP e por login. Persistido em `LOG_INVENTARIO` (tipo `LOGIN_FALHOU`) — sobrevive a reinicializações. Limpo ao fazer login com sucesso. |
 | JWT_SECRET | String aleatória mínimo 32 caracteres no `.env`. Assina todos os tokens HS256. |
 | Supervisor obrigatório | Consolidação com divergências exige login/senha de gerente/admin diferente do operador via endpoint interno. |
 | `EDICAO_SUSPEITA` | Detectada quando `qtde_nova == qtdeatual_snap` (contagem passou a coincidir exatamente com o estoque do sistema). |
@@ -304,14 +343,17 @@ Pedidos faturados mas não entregues representam estoque fisicamente presente ma
 | GET | `/depositos` | Lista depósitos do Automec. | Autenticado |
 | GET | `/produtos/barcode/{codigo}` | Busca por código de barras. | Autenticado |
 | GET | `/produtos/busca?q=` | Busca por descrição parcial. | Autenticado |
+| GET | `/ping` | Health check sem auth. | Público |
+| POST | `/sessao/iniciar` | Cria sessão em `INVENTARIO_SESSAO` (idempotente). | Autenticado |
 | POST | `/inventario/bipagem` | Registra scan atômico. Retorna qtde e flag alerta. | Autenticado |
-| GET | `/inventario/relatorio/{dep}` | Lista itens de `INVENTARIO_TEMP` do depósito. | Autenticado |
+| POST | `/inventario/bipagem/lote` | Sincroniza lote offline (idempotente via `LOTES_PROCESSADOS`). | Autenticado |
+| GET | `/inventario/relatorio/{dep}` | Lista itens de `INVENTARIO_TEMP` filtrado por session_id. | Autenticado |
 | GET | `/inventario/resumo/{dep}` | Produtos com estoque > 0 ainda não bipados. | Autenticado |
 | PUT | `/inventario/bipagem/{id}` | Edita quantidade. Grava `EDICAO` ou `EDICAO_SUSPEITA`. | Autenticado |
 | DELETE | `/inventario/bipagem/{id}` | Remove item. Grava `EXCLUSAO` no log. | Autenticado |
 | POST | `/inventario/consolidar` | Consolida no Automec com validação completa. | Autenticado |
-| GET | `/inventario/historico/{dep}` | Consolidações anteriores do depósito. | Autenticado |
-| GET | `/inventario/log/{dep}` | Log de auditoria (`LOG_INVENTARIO`). | Gerente/Admin |
+| GET | `/inventario/historico/{dep}` | Consolidações anteriores com timestamp real de LOG_INVENTARIO. | Autenticado |
+| GET | `/inventario/log/{dep}` | Log de auditoria (`LOG_INVENTARIO`). Fallback role→idgrupo. | Gerente/Admin |
 | GET | `/operadores` | Lista operadores em `OPERADORES_APP`. | Autenticado |
 | POST | `/operadores` | Cria novo operador. | Gerente/Admin |
 | PUT | `/operadores/{id}/toggle` | Ativa/desativa operador. | Gerente/Admin |

@@ -82,8 +82,12 @@ class LoginActivity : AppCompatActivity() {
                     }
                     Toast.makeText(this@LoginActivity, msg, Toast.LENGTH_LONG).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(this@LoginActivity, "Erro ao conectar: ${e.message}", Toast.LENGTH_LONG).show()
+            } catch (_: Exception) {
+                Toast.makeText(
+                    this@LoginActivity,
+                    "Sem conexão com o servidor.\nConecte-se ao WiFi do servidor para fazer login.",
+                    Toast.LENGTH_LONG
+                ).show()
             } finally {
                 setLoading(false)
             }

@@ -16,8 +16,10 @@ Guia completo para usar o aplicativo de inventário nos celulares Android.
 8. [Consolidar o inventário](#8-consolidar-o-inventário)
 9. [Consultar histórico](#9-consultar-histórico)
 10. [Auditoria de operações](#10-auditoria-de-operações)
-11. [Gerenciar operadores](#11-gerenciar-operadores)
-12. [Gerenciar usuários mobile](#12-gerenciar-usuários-mobile)
+10. [Usar sem internet (modo offline)](#10-usar-sem-internet-modo-offline)
+11. [Auditoria de operações](#11-auditoria-de-operações)
+12. [Gerenciar operadores](#12-gerenciar-operadores)
+13. [Gerenciar usuários mobile](#13-gerenciar-usuários-mobile)
 
 ---
 
@@ -167,6 +169,8 @@ A consolidação grava os dados no Automec (tabela `MOV_PRODUTO`). Esta operaç�
 
 Toque em **"Consolidar agora"** — não precisa de supervisor.
 
+> Se você editou alguma quantidade durante a sessão (mesmo sem divergências aparentes), o sistema pedirá autorização de supervisor automaticamente.
+
 ### Com divergências
 
 Quando há diferenças entre contado e sistema, é obrigatória a **autorização de um supervisor**:
@@ -195,7 +199,35 @@ Mostra todas as consolidações realizadas para o depósito selecionado, com:
 
 ---
 
-## 10. Auditoria de operações
+## 10. Usar sem internet (modo offline)
+
+O app funciona **sem conexão com o servidor** durante a coleta.
+
+### O que funciona offline
+
+- Bipar produtos (dados ficam salvos no celular)
+- Ver o relatório parcial da coleta atual
+- Pesquisar produtos no catálogo local (se já sincronizado)
+
+### O que exige conexão
+
+- Fazer login
+- Consolidar o inventário
+- Ver histórico e auditoria
+
+### Como funciona
+
+1. O chip no topo do relatório mostra **"● Offline"** quando sem conexão
+2. Continue bipando normalmente — os scans ficam salvos no celular
+3. Quando o Wi-Fi voltar, o app sincroniza automaticamente
+4. O chip muda para **"● Online"** e o relatório é atualizado
+5. Aí você pode consolidar normalmente
+
+> **Dica:** Se o botão "Sincronizar scans pendentes" aparecer, toque nele para forçar a sincronização antes de consolidar.
+
+---
+
+## 11. Auditoria de operações
 
 Disponível apenas para **gerentes e administradores**.
 
@@ -220,7 +252,7 @@ O log mostra todas as operações com:
 
 ---
 
-## 11. Gerenciar operadores
+## 12. Gerenciar operadores
 
 Disponível para **gerentes e administradores**.
 
@@ -233,7 +265,7 @@ Operadores são as pessoas que fazem a coleta física. Eles aparecem na lista de
 
 ---
 
-## 12. Gerenciar usuários mobile
+## 13. Gerenciar usuários mobile
 
 Disponível apenas para **admin mobile** (geralmente o usuário MI).
 

@@ -157,6 +157,53 @@
 
     </androidx.appcompat.widget.Toolbar>
 
+    <!-- Aviso catálogo não baixado -->
+    <LinearLayout
+        android:id="@+id/layoutAvisoCatalogo"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#EE000000"
+        android:padding="32dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@+id/toolbar"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⚠"
+            android:textSize="56sp"
+            android:textColor="#FF3333"
+            android:gravity="center"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:id="@+id/tvAvisoTitulo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Catálogo não baixado!"
+            android:textColor="#FF3333"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/tvAvisoMensagem"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Volte para a tela anterior, conecte ao servidor e selecione o depósito novamente para baixar o catálogo."
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.4" />
+
+    </LinearLayout>
+
     <!-- Mini-lista de itens bipados (acima do painel inferior) -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvScanned"
@@ -263,21 +310,6 @@
                 android:layout_height="wrap_content" />
 
         </LinearLayout>
-
-        <!-- Operador selecionado -->
-        <TextView
-            android:id="@+id/tvOperador"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Toque para selecionar operador"
-            android:textColor="#AAAAAA"
-            android:textSize="12sp"
-            android:paddingHorizontal="20dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="2dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true" />
 
         <!-- Botoes de acao -->
         <LinearLayout

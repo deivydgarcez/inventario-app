@@ -3,7 +3,10 @@ package br.com.inventario.util
 import android.content.Context
 import android.provider.Settings
 import br.com.inventario.BuildConfig
+import br.com.inventario.data.model.Deposito
 import androidx.core.content.edit
+import org.json.JSONArray
+import org.json.JSONObject
 
 class SessionManager(val context: Context) {
 
@@ -48,11 +51,36 @@ class SessionManager(val context: Context) {
     fun getServerUrl(): String =
         prefs.getString("server_url", BuildConfig.API_BASE_URL) ?: BuildConfig.API_BASE_URL
 
-    fun saveOperador(nome: String?) {
-        prefs.edit { putString("operador", nome) }
+    fun getOperador(): String? = getNome() ?: getUsuario()
+
+    fun saveCatalogoCompleto(cddeposito: Int, completo: Boolean) {
+        prefs.edit { putBoolean("catalogo_completo_$cddeposito", completo) }
     }
 
-    fun getOperador(): String? = prefs.getString("operador", null)
+    fun isCatalogoCompleto(cddeposito: Int): Boolean =
+        prefs.getBoolean("catalogo_completo_$cddeposito", false)
+
+    fun saveDepositos(depositos: List<Deposito>) {
+        val arr = JSONArray()
+        depositos.forEach { dep ->
+            arr.put(JSONObject().apply {
+                put("cddeposito", dep.cddeposito)
+                put("deposito", dep.deposito)
+            })
+        }
+        prefs.edit { putString("depositos_cache", arr.toString()) }
+    }
+
+    fun getCachedDepositos(): List<Deposito>? {
+        val json = prefs.getString("depositos_cache", null) ?: return null
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                Deposito(obj.getInt("cddeposito"), obj.getString("deposito"))
+            }
+        } catch (_: Exception) { null }
+    }
 
     fun saveScanMode(mode: String) {
         prefs.edit { putString("scan_mode", mode) }
@@ -67,9 +95,27 @@ class SessionManager(val context: Context) {
     fun isConsolidarBloqueado(cddeposito: Int): Boolean =
         prefs.getBoolean("consolidar_bloqueado_$cddeposito", false)
 
+    private fun sessionKey() = "session_id_${getCdDeposito()}"
+
+    fun getSessionId(): String? = prefs.getString(sessionKey(), null)
+
+    fun iniciarNovaSession(): String {
+        val id = java.util.UUID.randomUUID().toString()
+        prefs.edit { putString(sessionKey(), id) }
+        return id
+    }
+
+    fun getOuCriarSession(): String = getSessionId() ?: iniciarNovaSession()
+
+    fun encerrarSession() = prefs.edit { remove(sessionKey()) }
+
     fun logout() {
         val serverUrl = getServerUrl()
+        val depositosCache = prefs.getString("depositos_cache", null)
         prefs.edit { clear() }
         saveServerUrl(serverUrl)
+        if (depositosCache != null) {
+            prefs.edit { putString("depositos_cache", depositosCache) }
+        }
     }
 }

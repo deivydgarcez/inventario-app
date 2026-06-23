@@ -6,6 +6,9 @@ import retrofit2.http.*
 
 interface ApiService {
 
+    @GET("ping")
+    suspend fun ping(): Response<Map<String, String>>
+
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<TokenResponse>
 
@@ -28,10 +31,16 @@ interface ApiService {
     suspend fun registrarBipagem(@Body body: BipagemRequest): Response<BipagemResponse>
 
     @GET("inventario/relatorio/{cddeposito}")
-    suspend fun relatorio(@Path("cddeposito") cddeposito: Int): Response<List<ItemRelatorio>>
+    suspend fun relatorio(
+        @Path("cddeposito") cddeposito: Int,
+        @Query("session_id") sessionId: String? = null,
+    ): Response<List<ItemRelatorio>>
 
     @GET("inventario/resumo/{cddeposito}")
-    suspend fun resumoContagem(@Path("cddeposito") cddeposito: Int): Response<ResumoContagem>
+    suspend fun resumoContagem(
+        @Path("cddeposito") cddeposito: Int,
+        @Query("session_id") sessionId: String? = null,
+    ): Response<ResumoContagem>
 
     @POST("inventario/consolidar")
     suspend fun consolidar(@Body body: ConsolidarRequest): Response<ConsolidarResponse>
@@ -42,6 +51,7 @@ interface ApiService {
         @Query("cddeposito") cddeposito: Int,
         @Query("motivo") motivo: String? = null,
         @Query("device_id") deviceId: String? = null,
+        @Query("session_id") sessionId: String? = null,
     ): Response<Map<String, String>>
 
     @PUT("inventario/bipagem/{cdproduto}")
@@ -64,6 +74,28 @@ interface ApiService {
 
     @PUT("operadores/{id}/toggle")
     suspend fun toggleOperador(@Path("id") id: Int): Response<Operador>
+
+    @GET("produtos/{cddeposito}/catalogo")
+    suspend fun catalogo(
+        @Path("cddeposito") cddeposito: Int,
+        @Query("pagina") pagina: Int = 1,
+        @Query("limite") limite: Int = 500,
+    ): Response<CatalogoResponse>
+
+    @POST("sessao/iniciar")
+    suspend fun iniciarSessao(@Body body: IniciarSessaoRequest): Response<SessaoResponse>
+
+    @POST("sessao/{sessionId}/encerrar")
+    suspend fun encerrarSessao(@Path("sessionId") sessionId: String): Response<Map<String, String>>
+
+    @GET("sessao/{cddeposito}")
+    suspend fun listarSessoes(@Path("cddeposito") cddeposito: Int): Response<List<SessaoResponse>>
+
+    @POST("inventario/supervisor/pre-auth")
+    suspend fun supervisorPreAuth(@Body body: SupervisorPreAuthRequest): Response<SupervisorPreAuthResponse>
+
+    @POST("inventario/bipagem/lote")
+    suspend fun sincronizarLote(@Body body: LoteBipagemRequest): Response<LoteSyncResponse>
 
     @GET("auth/usuarios")
     suspend fun listarUsuariosMobile(): Response<List<UsuarioMobile>>

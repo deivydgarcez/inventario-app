@@ -39,6 +39,7 @@ data class BipagemRequest(
     val qtde: Double,
     val operador: String? = null,
     @SerializedName("device_id") val deviceId: String? = null,
+    @SerializedName("session_id") val sessionId: String? = null,
 )
 
 data class BipagemResponse(
@@ -55,6 +56,7 @@ data class EditarBipagemRequest(
     val cddeposito: Int,
     val motivo: String? = null,
     @SerializedName("device_id") val deviceId: String? = null,
+    @SerializedName("session_id") val sessionId: String? = null,
 )
 
 data class ItemRelatorio(
@@ -72,8 +74,16 @@ data class ConsolidarRequest(
     val operador: String? = null,
     @SerializedName("supervisor_login") val supervisorLogin: String? = null,
     @SerializedName("supervisor_senha") val supervisorSenha: String? = null,
+    @SerializedName("supervisor_token") val supervisorToken: String? = null,
     @SerializedName("recontagem_confirmada") val recontagemConfirmada: Boolean = false,
-    val idempresa: Int = 1,
+    @SerializedName("session_id") val sessionId: String? = null,
+)
+
+data class SupervisorPreAuthRequest(val login: String, val senha: String)
+
+data class SupervisorPreAuthResponse(
+    @SerializedName("supervisor_token") val supervisorToken: String,
+    @SerializedName("expira_em_segundos") val expiraEmSegundos: Int,
 )
 
 data class ConsolidarResponse(
@@ -102,6 +112,60 @@ data class ItemHistorico(
 data class Operador(val id: Int, val nome: String, val ativo: Int)
 
 data class OperadorRequest(val nome: String)
+
+// ── Sessão offline ────────────────────────────────────────────────────────────
+
+data class IniciarSessaoRequest(
+    @SerializedName("session_id") val sessionId: String,
+    val cddeposito: Int,
+    val operador: String? = null,
+)
+
+data class SessaoResponse(
+    @SerializedName("session_id") val sessionId: String,
+    val cddeposito: Int,
+    val operador: String?,
+    val status: String,
+    val inicio: String?,
+)
+
+data class BipagemLoteItem(
+    val cdproduto: Int,
+    val produto: String,
+    val qtde: Double,
+    val qtde_sistema: Double,
+    val operador: String? = null,
+    val device_id: String? = null,
+    val timestamp: Long = System.currentTimeMillis(),
+)
+
+data class LoteBipagemRequest(
+    @SerializedName("session_id") val sessionId: String,
+    val cddeposito: Int,
+    val bipagens: List<BipagemLoteItem>,
+    @SerializedName("lote_id") val loteId: String? = null,
+)
+
+data class LoteSyncResponse(
+    val sincronizados: Int,
+    val alertas: List<String> = emptyList(),
+)
+
+// ── Catálogo offline ──────────────────────────────────────────────────────────
+
+data class ProdutoCatalogoItem(
+    val cdproduto: Int,
+    val produto: String,
+    val codigobarra: String?,
+    val qtdeatual: Double,
+)
+
+data class CatalogoResponse(
+    val itens: List<ProdutoCatalogoItem>,
+    val total: Int,
+    val pagina: Int,
+    val paginas: Int,
+)
 
 data class LogAuditoria(
     val id: Int,

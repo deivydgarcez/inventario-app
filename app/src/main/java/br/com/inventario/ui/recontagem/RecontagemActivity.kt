@@ -21,18 +21,22 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import br.com.inventario.R
 import br.com.inventario.data.api.RetrofitClient
+import br.com.inventario.data.db.InvecDatabase
 import br.com.inventario.data.model.EditarBipagemRequest
 import br.com.inventario.data.model.ItemRelatorio
 import br.com.inventario.databinding.ActivityRecontagemBinding
 import br.com.inventario.databinding.ItemRecontagemBinding
+import br.com.inventario.util.ServerMonitor
 import br.com.inventario.util.SessionManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.abs
@@ -43,6 +47,7 @@ class RecontagemActivity : TimeoutActivity() {
 
     private lateinit var binding: ActivityRecontagemBinding
     private lateinit var session: SessionManager
+    private lateinit var db: InvecDatabase
     private var scanMode = ScanMode.BLUETOOTH
 
     private lateinit var cameraExecutor: ExecutorService
@@ -71,6 +76,7 @@ class RecontagemActivity : TimeoutActivity() {
         setContentView(binding.root)
 
         session = SessionManager(this)
+        db = InvecDatabase.getInstance(this)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         setSupportActionBar(binding.toolbar)
@@ -227,28 +233,70 @@ class RecontagemActivity : TimeoutActivity() {
         binding.progressBar.visibility = View.VISIBLE
         lifecycleScope.launch {
             try {
-                val api = RetrofitClient.build(session)
-                val resp = api.relatorio(session.getCdDeposito())
-                if (resp.isSuccessful) {
-                    val lista = resp.body() ?: emptyList()
-                    itens.clear()
-                    barcodeMap.clear()
-                    cdprodutoMap.clear()
-                    lista.forEachIndexed { idx, item ->
-                        itens.add(ItemRecontagem(item))
-                        item.codigobarra?.let { barcodeMap[it] = idx }
-                        cdprodutoMap[item.cdproduto] = idx
+                var carregouOnline = false
+                try {
+                    val api = RetrofitClient.build(session)
+                    val resp = api.relatorio(session.getCdDeposito(), session.getSessionId())
+                    if (resp.isSuccessful) {
+                        popularItens(resp.body() ?: emptyList())
+                        carregouOnline = true
                     }
-                    adapter.notifyDataSetChanged()
-                    atualizarStatus()
-                } else {
-                    Toast.makeText(this@RecontagemActivity, "Erro ao carregar itens", Toast.LENGTH_SHORT).show()
+                } catch (_: Exception) {}
+
+                if (!carregouOnline) {
+                    val sid = session.getSessionId() ?: ""
+                    val lista = db.bipag.getRelatorioOffline(sid, session.getCdDeposito())
+                        .map { local ->
+                            ItemRelatorio(
+                                cdproduto   = local.cdproduto,
+                                produto     = local.produto,
+                                codigobarra = local.codigobarra,
+                                qtde_sistema = local.qtdeSistema,
+                                qtde_contada = local.qtdeContada,
+                                diferenca   = local.diferenca,
+                                operador    = local.operador,
+                            )
+                        }
+                    popularItens(lista)
+                    if (lista.isEmpty()) {
+                        Toast.makeText(this@RecontagemActivity, "Sem conexão e sem dados locais", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@RecontagemActivity, "Offline — ${lista.size} itens do cache local", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (_: CancellationException) {
             } catch (e: Exception) {
                 Toast.makeText(this@RecontagemActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
                 binding.progressBar.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun popularItens(lista: List<ItemRelatorio>) {
+        itens.clear()
+        barcodeMap.clear()
+        cdprodutoMap.clear()
+        lista.forEachIndexed { idx, item ->
+            itens.add(ItemRecontagem(item))
+            item.codigobarra?.let { barcodeMap[it] = idx }
+            cdprodutoMap[item.cdproduto] = idx
+        }
+        adapter.notifyDataSetChanged()
+        atualizarStatus()
+
+        // BUG-6: carrega barcodes secundários do catálogo local (um produto pode ter vários)
+        val cddeposito = session.getCdDeposito()
+        val cdprodutos = lista.map { it.cdproduto }
+        lifecycleScope.launch {
+            val extras = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                db.catalogo.getAllBarcodesForCdprodutos(cdprodutos, cddeposito)
+            }
+            extras.forEach { (barcode, cdproduto) ->
+                if (!barcodeMap.containsKey(barcode)) {
+                    val idx = cdprodutoMap[cdproduto]
+                    if (idx != null) barcodeMap[barcode] = idx
+                }
             }
         }
     }
@@ -292,18 +340,33 @@ class RecontagemActivity : TimeoutActivity() {
                 if (idx != null) {
                     incrementarItem(idx)
                 } else {
-                    val api = RetrofitClient.build(session)
-                    val resp = api.buscarPorBarcode(codigo, session.getCdDeposito())
-                    if (resp.isSuccessful) {
-                        val produto = resp.body()!!
-                        val idx2 = cdprodutoMap[produto.cdproduto]
-                        if (idx2 != null) {
-                            incrementarItem(idx2)
-                        } else {
-                            Toast.makeText(this@RecontagemActivity, "Produto não está na contagem: ${produto.produto}", Toast.LENGTH_SHORT).show()
+                    var encontrado = false
+                    // Tenta API primeiro
+                    try {
+                        val api = RetrofitClient.build(session)
+                        val resp = api.buscarPorBarcode(codigo, session.getCdDeposito())
+                        if (resp.isSuccessful) {
+                            val produto = resp.body()
+                            if (produto != null) {
+                                val idx2 = cdprodutoMap[produto.cdproduto]
+                                if (idx2 != null) incrementarItem(idx2)
+                                else Toast.makeText(this@RecontagemActivity, "Produto não está na contagem: ${produto.produto}", Toast.LENGTH_SHORT).show()
+                                encontrado = true
+                            }
                         }
-                    } else {
-                        Toast.makeText(this@RecontagemActivity, "Produto não encontrado: $codigo", Toast.LENGTH_SHORT).show()
+                    } catch (_: Exception) {}
+
+                    // Fallback: catálogo offline
+                    if (!encontrado) {
+                        val cached = db.catalogo.getByBarcode(codigo, session.getCdDeposito())
+                        if (cached != null) {
+                            val idx2 = cdprodutoMap[cached.cdproduto]
+                            if (idx2 != null) incrementarItem(idx2)
+                            else Toast.makeText(this@RecontagemActivity, "Produto não está na contagem: ${cached.produto}", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val sufixo = if (!ServerMonitor.isOnline.value) " (sem conexão)" else ""
+                            Toast.makeText(this@RecontagemActivity, "Produto não encontrado: $codigo$sufixo", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (_: CancellationException) {
@@ -367,11 +430,14 @@ class RecontagemActivity : TimeoutActivity() {
         view.findViewById<android.widget.TextView>(R.id.tvMensagemResultado).text = msg
 
         var dialog: AlertDialog? = null
+        val online = ServerMonitor.isOnline.value
 
         if (divergencias.isNotEmpty()) {
             // Aplicar 2ª contagem e já consolidar — ação principal
             view.findViewById<MaterialButton>(R.id.btnConsolidarAgora).apply {
                 visibility = View.VISIBLE
+                isEnabled = online
+                if (!online) text = "Consolidar (requer conexão)"
                 setOnClickListener {
                     dialog?.dismiss()
                     aplicarRecontagemEConsolidar(divergencias)
@@ -380,6 +446,8 @@ class RecontagemActivity : TimeoutActivity() {
             // Aplicar 2ª contagem e voltar ao relatório
             view.findViewById<MaterialButton>(R.id.btnAplicar2a).apply {
                 visibility = View.VISIBLE
+                isEnabled = online
+                if (!online) text = "Aplicar 2ª contagem (requer conexão)"
                 setOnClickListener { aplicarRecontagem(divergencias); dialog?.dismiss() }
             }
             view.findViewById<MaterialButton>(R.id.btnManter1a).apply {
@@ -395,6 +463,8 @@ class RecontagemActivity : TimeoutActivity() {
             // Sem divergências: consolidar direto é a ação principal
             view.findViewById<MaterialButton>(R.id.btnConsolidarAgora).apply {
                 visibility = View.VISIBLE
+                isEnabled = online
+                if (!online) text = "Consolidar (requer conexão)"
                 setOnClickListener {
                     dialog?.dismiss()
                     finalizarComConsolidar()
@@ -431,7 +501,7 @@ class RecontagemActivity : TimeoutActivity() {
                 divergencias.forEach { item ->
                     val resp = api.editarBipagem(
                         item.item.cdproduto,
-                        EditarBipagemRequest(item.qtde2, session.getCdDeposito(), motivo = "Recontagem aplicada"),
+                        EditarBipagemRequest(item.qtde2, session.getCdDeposito(), motivo = "Recontagem aplicada", sessionId = session.getSessionId()),
                     )
                     if (!resp.isSuccessful) falhou = true
                 }
@@ -458,7 +528,7 @@ class RecontagemActivity : TimeoutActivity() {
                 divergencias.forEach { item ->
                     val resp = api.editarBipagem(
                         item.item.cdproduto,
-                        EditarBipagemRequest(item.qtde2, session.getCdDeposito(), motivo = "Recontagem aplicada"),
+                        EditarBipagemRequest(item.qtde2, session.getCdDeposito(), motivo = "Recontagem aplicada", sessionId = session.getSessionId()),
                     )
                     if (resp.isSuccessful) atualizados++
                 }

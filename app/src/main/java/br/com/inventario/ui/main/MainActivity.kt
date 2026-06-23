@@ -8,15 +8,17 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import br.com.inventario.data.api.RetrofitClient
+import br.com.inventario.data.db.InvecDatabase
 import br.com.inventario.data.model.Deposito
-import br.com.inventario.data.model.Operador
+import br.com.inventario.data.model.IniciarSessaoRequest
+import br.com.inventario.data.repository.CatalogoRepository
 import br.com.inventario.databinding.ActivityMainBinding
 import br.com.inventario.ui.login.LoginActivity
 import br.com.inventario.ui.base.TimeoutActivity
-import br.com.inventario.ui.operadores.OperadoresActivity
 import br.com.inventario.ui.relatorio.RelatorioActivity
 import br.com.inventario.ui.scanner.ScannerActivity
 import br.com.inventario.ui.usuarios.UsuariosActivity
+import br.com.inventario.util.ServerMonitor
 import br.com.inventario.util.SessionManager
 import kotlinx.coroutines.launch
 
@@ -24,6 +26,7 @@ class MainActivity : TimeoutActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var session: SessionManager
+    private lateinit var db: InvecDatabase
     private var depositos: List<Deposito> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,20 +35,20 @@ class MainActivity : TimeoutActivity() {
         setContentView(binding.root)
 
         session = SessionManager(this)
+        db = InvecDatabase.getInstance(this)
+
+        ServerMonitor.startOrKeep(session, lifecycleScope)
+
         atualizarHeader()
 
         binding.btnSelecionarDeposito.setOnClickListener { carregarDepositos() }
         binding.btnBipar.setOnClickListener { abrirScanner() }
         binding.btnRelatorio.setOnClickListener { abrirRelatorio() }
-        binding.btnOperadores.setOnClickListener {
-            startActivity(Intent(this, OperadoresActivity::class.java))
-        }
         binding.btnUsuarios.setOnClickListener {
             startActivity(Intent(this, UsuariosActivity::class.java))
         }
         binding.btnSair.setOnClickListener { sair() }
         binding.btnConfigurarServidor.setOnClickListener { configurarServidor() }
-        binding.tvOperadorAtual.setOnClickListener { carregarEMostrarOperadores() }
     }
 
     override fun onResume() {
@@ -57,41 +60,19 @@ class MainActivity : TimeoutActivity() {
         val nome = session.getNome() ?: session.getUsuario() ?: "usuário"
         binding.tvNome.text = "Olá, $nome"
         val dep = session.getNomeDeposito()
-        binding.tvDeposito.text = if (dep != null) "Depósito: $dep" else "Nenhum depósito selecionado"
+        val cdDep = session.getCdDeposito()
+        if (dep != null) {
+            val qtdeCatalogo = db.catalogo.count(cdDep)
+            binding.tvDeposito.text = if (qtdeCatalogo > 0)
+                "Depósito: $dep · $qtdeCatalogo produtos em cache"
+            else
+                "Depósito: $dep · catálogo não baixado"
+        } else {
+            binding.tvDeposito.text = "Nenhum depósito selecionado"
+        }
         binding.btnBipar.isEnabled = dep != null
         binding.btnRelatorio.isEnabled = dep != null
-        val op = session.getOperador()
-        binding.tvOperadorAtual.text = if (op != null)
-            "Operador: $op  (toque para trocar)"
-        else
-            "Operador: nenhum selecionado  (toque para definir)"
         binding.btnUsuarios.visibility = if (session.canManageUsers()) View.VISIBLE else View.GONE
-    }
-
-    private fun carregarEMostrarOperadores() {
-        lifecycleScope.launch {
-            try {
-                val api = RetrofitClient.build(session)
-                val resp = api.listarOperadores()
-                if (resp.isSuccessful) {
-                    val lista: List<Operador> = (resp.body() ?: emptyList()).filter { it.ativo == 1 }
-                    val nomes = (listOf("(Sem operador)") + lista.map { it.nome }).toTypedArray()
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Quem vai fazer a contagem?")
-                        .setCancelable(true)
-                        .setItems(nomes) { _, idx ->
-                            val operador = if (idx == 0) null else lista[idx - 1].nome
-                            session.saveOperador(operador)
-                            atualizarHeader()
-                        }
-                        .show()
-                } else {
-                    Toast.makeText(this@MainActivity, "Erro ao carregar operadores", Toast.LENGTH_SHORT).show()
-                }
-            } catch (_: Exception) {
-                Toast.makeText(this@MainActivity, "Sem conexão para carregar operadores", Toast.LENGTH_SHORT).show()
-            }
-        }
     }
 
     private fun configurarServidor() {
@@ -112,6 +93,8 @@ class MainActivity : TimeoutActivity() {
                     if (!url.endsWith("/")) url = "$url/"
                     session.saveServerUrl(url)
                     RetrofitClient.reset()
+                    ServerMonitor.reset()
+                    ServerMonitor.startOrKeep(session, lifecycleScope)
                     Toast.makeText(this, "Servidor configurado: $url", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -126,25 +109,89 @@ class MainActivity : TimeoutActivity() {
                 val response = api.listarDepositos()
                 if (response.isSuccessful) {
                     depositos = response.body() ?: emptyList()
-                    mostrarDialogDeposito()
+                    session.saveDepositos(depositos)
+                    mostrarDialogDeposito(fromCache = false)
                 } else {
                     Toast.makeText(this@MainActivity, "Erro ao carregar depósitos", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) {
+                val cached = session.getCachedDepositos()
+                if (!cached.isNullOrEmpty()) {
+                    depositos = cached
+                    mostrarDialogDeposito(fromCache = true)
+                } else {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Sem conexão. Conecte-se ao servidor ao menos uma vez para usar offline.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     }
 
-    private fun mostrarDialogDeposito() {
+    private fun mostrarDialogDeposito(fromCache: Boolean = false) {
         val nomes = depositos.map { it.deposito }.toTypedArray()
+        val titulo = if (fromCache) "Selecionar Depósito (cache)" else "Selecionar Depósito"
         AlertDialog.Builder(this)
-            .setTitle("Selecionar Depósito")
+            .setTitle(titulo)
             .setItems(nomes) { _, index ->
                 val dep = depositos[index]
+
+                // BUG-2: guarda depósito/sessão antigos antes de trocar
+                val oldDepositoId = session.getCdDeposito()
+                val oldSessionId  = if (oldDepositoId != -1 && oldDepositoId != dep.cddeposito)
+                    session.getSessionId() else null
+
                 session.saveDeposito(dep.cddeposito, dep.deposito)
+
+                // Garante sessão ativa para este depósito
+                val sessionId = session.getOuCriarSession()
+
                 atualizarHeader()
-                Toast.makeText(this, "Depósito: ${dep.deposito}", Toast.LENGTH_SHORT).show()
+                binding.btnSelecionarDeposito.isEnabled = false
+                binding.btnBipar.isEnabled = false
+
+                lifecycleScope.launch {
+                    try {
+                        val api = RetrofitClient.build(session)
+
+                        // BUG-2: encerra sessão do depósito anterior no servidor (não bloqueia UI em caso de falha)
+                        if (oldSessionId != null && ServerMonitor.isOnline.value) {
+                            try { api.encerrarSessao(oldSessionId) } catch (_: Exception) {}
+                        }
+
+                        if (ServerMonitor.isOnline.value) {
+                            try {
+                                api.iniciarSessao(IniciarSessaoRequest(
+                                    sessionId  = sessionId,
+                                    cddeposito = dep.cddeposito,
+                                    operador   = session.getOperador(),
+                                ))
+                            } catch (_: Exception) { }
+                        }
+
+                        val repo = CatalogoRepository(db, api, session)
+                        repo.sincronizarCatalogo(dep.cddeposito) { baixados, total ->
+                            runOnUiThread {
+                                binding.tvDeposito.text =
+                                    "Depósito: ${dep.deposito} · baixando $baixados/$total..."
+                            }
+                        }
+                    } catch (_: Exception) {
+                        val cached = db.catalogo.count(dep.cddeposito)
+                        runOnUiThread {
+                            if (cached == 0) {
+                                Toast.makeText(this@MainActivity, "Sem conexão — catálogo não baixado", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    } finally {
+                        runOnUiThread {
+                            binding.btnSelecionarDeposito.isEnabled = true
+                            atualizarHeader()
+                        }
+                    }
+                }
             }
             .show()
     }
@@ -166,6 +213,21 @@ class MainActivity : TimeoutActivity() {
     }
 
     private fun sair() {
+        val online = ServerMonitor.isOnline.value
+        val mensagem = if (online) {
+            "Deseja sair da conta?"
+        } else {
+            "Você está sem conexão com o servidor.\n\nSe sair, só conseguirá fazer login novamente quando estiver conectado ao servidor."
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Sair da conta")
+            .setMessage(mensagem)
+            .setPositiveButton("Sair") { _, _ -> fazerLogout() }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun fazerLogout() {
         session.logout()
         RetrofitClient.reset()
         startActivity(Intent(this, LoginActivity::class.java))

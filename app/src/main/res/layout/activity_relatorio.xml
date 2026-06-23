@@ -7,7 +7,6 @@
     android:background="@color/screenBackground"
     android:fitsSystemWindows="true">
 
-    <!-- Toolbar com botão voltar (altura dinâmica para acomodar a status bar) -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
@@ -24,58 +23,70 @@
         android:orientation="horizontal"
         android:background="@color/cardBackground"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp"
-        android:elevation="2dp">
+        android:paddingVertical="10dp"
+        android:gravity="center_vertical"
+        android:elevation="3dp">
+
+        <TextView
+            android:id="@+id/tvOnlinePill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● Online"
+            android:textSize="11sp"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:background="@drawable/bg_pill" />
 
         <TextView
             android:id="@+id/tvTotal"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="0 itens bipados"
-            android:textSize="14sp"
-            android:textColor="@color/textSecondary"
-            android:gravity="center_vertical" />
+            android:layout_marginStart="12dp"
+            android:text="0 itens"
+            android:textSize="13sp"
+            android:textColor="@color/textSecondary" />
 
         <ProgressBar
             android:id="@+id/progressBar"
             style="?android:attr/progressBarStyleSmall"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
             android:visibility="gone" />
 
     </LinearLayout>
 
-    <!-- Dica de interação — discreta, aparece só quando há itens -->
+    <!-- Dica swipe -->
     <TextView
         android:id="@+id/tvDicaSwipe"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="← Deslize item para excluir   ·   Toque para editar"
+        android:text="← Deslize para excluir   ·   Toque para editar"
         android:textSize="11sp"
         android:textColor="@color/textSecondary"
         android:gravity="center"
         android:paddingVertical="4dp"
         android:visibility="gone" />
 
-    <!-- Lista de itens -->
+    <!-- Lista -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:paddingTop="4dp"
-        android:paddingBottom="8dp"
+        android:paddingBottom="4dp"
         android:clipToPadding="false" />
 
-    <!-- Aviso de produtos não contados (risco de omissão intencional) -->
+    <!-- Aviso: produtos não contados -->
     <TextView
         android:id="@+id/tvAvisoNaoContados"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="8dp"
         android:background="#FFB71C1C"
         android:textColor="#FFFFFF"
         android:textStyle="bold"
@@ -84,88 +95,102 @@
         android:paddingVertical="8dp"
         android:visibility="gone" />
 
-    <!-- Aviso de bloqueio de consolidação -->
-    <TextView
-        android:id="@+id/tvAvisoBloqueio"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="8dp"
-        android:background="#FFFF8F00"
-        android:textColor="#FFFFFF"
-        android:textStyle="bold"
-        android:textSize="12sp"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp"
-        android:text="⚠ Recontagem com divergências. Refaça a recontagem para habilitar consolidar."
-        android:visibility="gone"
-        />
-
-    <!-- Botões de histórico e auditoria -->
+    <!-- Área de ações — fundo branco, elevação suave -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="4dp">
+        android:orientation="vertical"
+        android:background="@color/cardBackground"
+        android:elevation="6dp"
+        android:paddingHorizontal="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="12dp">
 
+        <!-- Histórico + Auditoria -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnHistorico"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:text="Histórico"
+                android:textSize="12sp"
+                app:icon="@drawable/ic_history"
+                app:iconSize="14dp"
+                app:cornerRadius="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAuditoria"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:text="Auditoria"
+                android:textSize="12sp"
+                app:icon="@drawable/ic_report"
+                app:iconSize="14dp"
+                app:cornerRadius="8dp" />
+
+        </LinearLayout>
+
+        <!-- Sincronizar — só quando offline com pendentes -->
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnHistorico"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="0dp"
-            android:layout_height="36dp"
-            android:layout_weight="1"
-            android:text="Histórico"
-            android:textSize="12sp"
-            app:icon="@drawable/ic_history"
-            app:iconSize="14dp"
+            android:id="@+id/btnSincronizar"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="4dp"
+            android:text="↑ Sincronizar scans pendentes"
+            android:textSize="13sp"
+            android:visibility="gone"
+            app:strokeColor="@color/colorPrimary"
             app:cornerRadius="8dp" />
 
+        <!-- Recontagem -->
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnAuditoria"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="0dp"
-            android:layout_height="36dp"
-            android:layout_weight="1"
-            android:text="Auditoria"
+            android:id="@+id/btnRecontagem"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="6dp"
+            android:text="Fazer Recontagem"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:enabled="false"
+            app:cornerRadius="10dp"
+            app:backgroundTint="#FF388E3C" />
+
+        <!-- Aviso de bloqueio — logo acima do Consolidar -->
+        <TextView
+            android:id="@+id/tvAvisoBloqueio"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="#FFFF8F00"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
             android:textSize="12sp"
-            app:icon="@drawable/ic_report"
-            app:iconSize="14dp"
-            app:cornerRadius="8dp" />
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:visibility="gone" />
+
+        <!-- Consolidar -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConsolidar"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="6dp"
+            android:text="Consolidar Inventário"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:enabled="false"
+            app:cornerRadius="10dp"
+            app:backgroundTint="@color/colorPrimary" />
 
     </LinearLayout>
-
-    <!-- Botão Recontagem (recomendado quando há divergências) -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnRecontagem"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="6dp"
-        android:text="✓ Fazer Recontagem (Recomendado)"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:enabled="false"
-        app:cornerRadius="10dp"
-        app:backgroundTint="#FF388E3C" />
-
-    <!-- Botão consolidar fixo no rodapé -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnConsolidar"
-        android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="64dp"
-        android:text="Consolidar Inventário"
-        android:textSize="17sp"
-        android:textStyle="bold"
-        android:elevation="6dp"
-        android:enabled="false"
-        app:cornerRadius="10dp"
-        app:backgroundTint="#FFCC5B2A" />
 
 </LinearLayout>

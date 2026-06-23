@@ -95,7 +95,7 @@ class AuditoriaActivity : TimeoutActivity() {
                     "ALERTA_REESCAN"  -> Color.parseColor("#880E4F")  // roxo — padrão de fraude
                     else              -> Color.parseColor("#37474F")
                 }
-                tvTipo.background.setTint(cor)
+                tvTipo.background.mutate().setTint(cor)
 
                 // Data/hora
                 tvDataHora.text = log.dataHora

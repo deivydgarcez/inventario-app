@@ -48,19 +48,6 @@
             android:textColor="@color/headerTextSecondary"
             android:textSize="13sp" />
 
-        <TextView
-            android:id="@+id/tvOperadorAtual"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:paddingVertical="4dp"
-            android:text="Operador: nenhum selecionado (toque para definir)"
-            android:textColor="#FFEEEEEE"
-            android:textSize="12sp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true" />
-
     </LinearLayout>
 
     <!-- Actions area -->
@@ -115,20 +102,6 @@
             app:icon="@drawable/ic_report"
             app:iconTint="?attr/colorPrimary"
             app:iconSize="22dp"
-            app:cornerRadius="10dp" />
-
-        <!-- Gerenciar Operadores -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnOperadores"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginBottom="8dp"
-            android:text="Gerenciar Operadores"
-            android:textSize="14sp"
-            app:icon="@drawable/ic_person"
-            app:iconTint="?attr/colorPrimary"
-            app:iconSize="20dp"
             app:cornerRadius="10dp" />
 
         <com.google.android.material.button.MaterialButton

@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.EditText
 import android.widget.Toast
@@ -18,16 +20,25 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import br.com.inventario.data.api.RetrofitClient
-import br.com.inventario.ui.base.TimeoutActivity
+import br.com.inventario.data.db.BipagPendente
+import br.com.inventario.data.db.InvecDatabase
+import br.com.inventario.data.db.ProdutoCache
+
 import br.com.inventario.data.model.BipagemRequest
 import br.com.inventario.data.model.EditarBipagemRequest
 import br.com.inventario.data.model.Produto
 import br.com.inventario.databinding.ActivityScannerBinding
+import br.com.inventario.ui.base.TimeoutActivity
+import br.com.inventario.util.ServerMonitor
 import br.com.inventario.util.SessionManager
+import br.com.inventario.util.SyncManager
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -37,6 +48,7 @@ class ScannerActivity : TimeoutActivity() {
 
     private lateinit var binding: ActivityScannerBinding
     private lateinit var session: SessionManager
+    private lateinit var db: InvecDatabase
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
 
@@ -61,6 +73,7 @@ class ScannerActivity : TimeoutActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         session = SessionManager(this)
+        db = InvecDatabase.getInstance(this)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         setSupportActionBar(binding.toolbar)
@@ -73,7 +86,6 @@ class ScannerActivity : TimeoutActivity() {
             insets
         }
 
-        // Painel inferior acima da barra de navegação do sistema
         ViewCompat.setOnApplyWindowInsetsListener(binding.bottomPanel) { v, insets ->
             val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, nav)
@@ -89,7 +101,6 @@ class ScannerActivity : TimeoutActivity() {
         binding.btnTrocarModo.setOnClickListener { mostrarSeletorModo() }
         binding.btnDigitarCodigo.setOnClickListener { digitarManualmente() }
         binding.btnEscanear.setOnClickListener { iniciarScan() }
-        binding.tvOperador.setOnClickListener { selecionarOperador() }
         binding.switchMultiplo.setOnCheckedChangeListener { _, checked ->
             if (checked && !aguardandoScan && !processando && scanMode == ScanMode.CAMERA) {
                 iniciarScan()
@@ -99,45 +110,46 @@ class ScannerActivity : TimeoutActivity() {
         val modoSalvo = session.getScanMode()
         aplicarModo(if (modoSalvo == "BLUETOOTH") ScanMode.BLUETOOTH else ScanMode.CAMERA)
 
-        atualizarTextoOperador()
-    }
-
-    private fun atualizarTextoOperador() {
-        val op = session.getOperador()
-        val travado = totalBipagens > 0
-        binding.tvOperador.text = when {
-            op == null && !travado -> "Operador: nenhum  (toque para definir)"
-            op == null && travado  -> "Operador: nenhum  (saia para trocar)"
-            travado               -> "Operador: $op  [travado - saia para trocar]"
-            else                  -> "Operador: $op  (toque para trocar)"
-        }
-    }
-
-    private fun selecionarOperador() {
-        if (totalBipagens > 0) {
-            Toast.makeText(this, "Operador travado após início da coleta. Saia e entre novamente para trocar.", Toast.LENGTH_LONG).show()
-            return
-        }
+        // Restaura mini-lista da sessão atual ao reabrir o scanner
         lifecycleScope.launch {
-            try {
-                val api = RetrofitClient.build(session)
-                val resp = api.listarOperadores()
-                if (resp.isSuccessful) {
-                    val lista = (resp.body() ?: emptyList()).filter { it.ativo == 1 }
-                    val nomes = (listOf("(Sem operador)") + lista.map { it.nome }).toTypedArray()
-                    AlertDialog.Builder(this@ScannerActivity)
-                        .setTitle("Quem está fazendo a contagem?")
-                        .setCancelable(true)
-                        .setItems(nomes) { _, idx ->
-                            val operador = if (idx == 0) null else lista[idx - 1].nome
-                            session.saveOperador(operador)
-                            atualizarTextoOperador()
-                        }
-                        .show()
+            val sid = session.getSessionId() ?: return@launch
+            val cddeposito = session.getCdDeposito()
+            val itens = withContext(Dispatchers.IO) { db.bipag.getRelatorioOffline(sid, cddeposito) }
+            if (itens.isNotEmpty()) {
+                // take(5) mostra os mais recentes; none-check evita duplicatas se um scan chegou antes desta coroutine
+                itens.take(5).reversed().forEach { item ->
+                    if (scannedItems.none { it.cdproduto == item.cdproduto }) {
+                        scannedItems.add(ScannedItem(item.cdproduto, item.produto, item.qtdeContada))
+                    }
                 }
-            } catch (_: Exception) {
-                Toast.makeText(this@ScannerActivity, "Não foi possível carregar operadores", Toast.LENGTH_SHORT).show()
+                if (scannedItems.isNotEmpty()) {
+                    scannedAdapter.notifyDataSetChanged()
+                    binding.rvScanned.visibility = View.VISIBLE
+                }
             }
+        }
+
+        verificarCatalogo()
+
+        // Monitor de conectividade
+        ServerMonitor.startOrKeep(session, lifecycleScope)
+        SyncManager.observarESync(db, session, lifecycleScope)
+
+        lifecycleScope.launch {
+            ServerMonitor.isOnline.collect { online ->
+                atualizarIndicadorConexao(online)
+                verificarCatalogo()
+            }
+        }
+    }
+
+    private suspend fun atualizarIndicadorConexao(online: Boolean) {
+        val sid = session.getSessionId()
+        val pendentes = if (sid != null) withContext(Dispatchers.IO) { db.bipag.countPendentes(sid) } else 0
+        supportActionBar?.subtitle = if (online) {
+            if (pendentes > 0) "Sincronizando $pendentes itens..." else "Online"
+        } else {
+            if (pendentes > 0) "Offline — $pendentes pendentes" else "Offline"
         }
     }
 
@@ -160,7 +172,6 @@ class ScannerActivity : TimeoutActivity() {
         binding.tvStatus.text = "Aponte a câmera para o código de barras"
         binding.tvStatus.visibility = View.VISIBLE
 
-        // Timeout de 6 segundos se não ler nada
         lifecycleScope.launch {
             delay(6000)
             if (aguardandoScan) {
@@ -313,56 +324,146 @@ class ScannerActivity : TimeoutActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    private fun verificarCatalogo(): Boolean {
+        val cddeposito = session.getCdDeposito()
+        val total = db.catalogo.count(cddeposito)
+        val completo = session.isCatalogoCompleto(cddeposito)
+        val offline = !ServerMonitor.isOnline.value
+
+        val bloqueado = offline && (total == 0 || !completo)
+        if (bloqueado) {
+            binding.layoutAvisoCatalogo.visibility = View.VISIBLE
+            binding.btnEscanear.isEnabled = false
+            binding.btnDigitarCodigo.isEnabled = false
+            if (total == 0) {
+                binding.tvAvisoTitulo.text = "Catálogo não baixado!"
+                binding.tvAvisoMensagem.text =
+                    "Volte para a tela anterior, conecte ao servidor e selecione o depósito novamente para baixar o catálogo."
+            } else {
+                binding.tvAvisoTitulo.text = "Catálogo incompleto!"
+                binding.tvAvisoMensagem.text =
+                    "O catálogo foi interrompido antes de terminar ($total produtos baixados).\n\nVolte, conecte ao servidor e selecione o depósito novamente para completar o download."
+            }
+        } else {
+            binding.layoutAvisoCatalogo.visibility = View.GONE
+            binding.btnEscanear.isEnabled = true
+            binding.btnDigitarCodigo.isEnabled = true
+        }
+        return bloqueado
+    }
+
     private fun buscarProduto(codigo: String) {
+        val cddeposito = session.getCdDeposito()
+        val sessionId = session.getOuCriarSession()
+
         lifecycleScope.launch {
+            var produto: Produto? = null
+            var erroRede: Boolean = false
+
+            // Tenta rede primeiro
             try {
                 val api = RetrofitClient.build(session)
-                val response = api.buscarPorBarcode(codigo, session.getCdDeposito())
-                if (response.isSuccessful) {
-                    registrarBipagem(response.body()!!)
-                } else if (response.code() == 404) {
-                    mostrarErro("Produto não encontrado: $codigo")
-                    resetarEstado()
-                } else {
-                    mostrarErro("Erro ao buscar produto")
-                    resetarEstado()
+                val response = api.buscarPorBarcode(codigo, cddeposito)
+                when {
+                    response.isSuccessful -> {
+                        produto = response.body()!!
+                        // Atualiza cache local se tiver código de barras
+                        val barcode = produto.codigobarra
+                        if (!barcode.isNullOrBlank()) {
+                            db.catalogo.upsertBatch(listOf(ProdutoCache(
+                                codigobarra = barcode,
+                                cddeposito  = cddeposito,
+                                cdproduto   = produto.cdproduto,
+                                produto     = produto.produto,
+                                qtdeatual   = produto.qtdeatual ?: 0.0,
+                            )))
+                        }
+                    }
+                    response.code() == 404 -> {
+                        mostrarErro("Produto não encontrado: $codigo")
+                        resetarEstado()
+                        return@launch
+                    }
+                    else -> { erroRede = true; throw Exception("HTTP ${response.code()}") }
                 }
-            } catch (e: Exception) {
-                mostrarErro("Sem conexão com o servidor")
+            } catch (_: Exception) {
+                erroRede = true
+                // Sem rede — busca no cache local
+                val cached = db.catalogo.getByBarcode(codigo, cddeposito)
+                if (cached != null) {
+                    produto = Produto(cached.cdproduto, cached.produto, cached.codigobarra, cached.qtdeatual)
+                }
+
+            }
+
+            if (produto != null) {
+                registrarBipagem(produto, sessionId)
+            } else {
+                val totalCache = db.catalogo.count(cddeposito)
+                val catalogoIncompleto = !session.isCatalogoCompleto(cddeposito)
+                if (erroRede && (totalCache == 0 || catalogoIncompleto)) {
+                    runOnUiThread { verificarCatalogo() }
+                } else {
+                    mostrarErro("Produto não cadastrado no sistema")
+                }
                 resetarEstado()
             }
         }
     }
 
-    private fun registrarBipagem(produto: Produto) {
+    private fun registrarBipagem(produto: Produto, sessionId: String) {
+        val cddeposito = session.getCdDeposito()
+
         lifecycleScope.launch {
-            try {
-                val api = RetrofitClient.build(session)
-                val resp = api.registrarBipagem(
-                    BipagemRequest(
-                        cdproduto = produto.cdproduto,
-                        cddeposito = session.getCdDeposito(),
-                        qtde = 1.0,
-                        operador = session.getOperador(),
-                        deviceId = session.getDeviceId(),
-                    )
-                )
-                if (resp.isSuccessful) {
-                    val body = resp.body()!!
-                    totalBipagens++
-                    atualizarMiniLista(produto.cdproduto, produto.produto, body.novaQtde)
-                    mostrarUltimoBipado(produto.produto, body.novaQtde)
-                    if (!body.alerta.isNullOrBlank()) {
-                        mostrarAlertaQuantidade(produto.produto, body.alerta)
+            // Snapshot de estoque: igual ao 1º scan deste produto na sessão
+            val qtdeSistema = db.bipag.getQtdeSistema(produto.cdproduto, sessionId)
+                ?: (produto.qtdeatual ?: 0.0)
+
+            // 1. Salvar em Room imediatamente (funciona offline)
+            val rowId = db.bipag.insert(BipagPendente(
+                sessionId   = sessionId,
+                cdproduto   = produto.cdproduto,
+                produto     = produto.produto,
+                codigobarra = produto.codigobarra,
+                qtde        = 1.0,
+                cddeposito  = cddeposito,
+                operador    = session.getOperador(),
+                deviceId    = session.getDeviceId(),
+                qtdeSistema = qtdeSistema,
+            ))
+
+            // 2. Quantidade acumulada calculada localmente
+            val novaQtde = db.bipag.getQtdeAcumulada(produto.cdproduto, sessionId)
+
+            totalBipagens++
+            atualizarMiniLista(produto.cdproduto, produto.produto, novaQtde)
+            mostrarUltimoBipado(produto.produto, novaQtde)
+
+            // 3. Sincronização imediata se online
+            if (ServerMonitor.isOnline.value) {
+                try {
+                    val api = RetrofitClient.build(session)
+                    val resp = api.registrarBipagem(BipagemRequest(
+                        cdproduto  = produto.cdproduto,
+                        cddeposito = cddeposito,
+                        qtde       = 1.0,
+                        operador   = session.getOperador(),
+                        deviceId   = session.getDeviceId(),
+                        sessionId  = sessionId,
+                    ))
+                    if (resp.isSuccessful) {
+                        db.bipag.marcarSincronizado(rowId)
+                        val alerta = resp.body()?.alerta
+                        if (!alerta.isNullOrBlank()) mostrarAlertaQuantidade(produto.produto, alerta)
                     }
-                } else {
-                    mostrarErro("Erro ao registrar bipagem")
+                } catch (_: Exception) {
+                    // UX-2: atualiza status de conexão imediatamente sem aguardar o ciclo de 30s
+                    ServerMonitor.forcePing(session, lifecycleScope)
                 }
-            } catch (e: Exception) {
-                mostrarErro("Erro: ${e.message}")
-            } finally {
-                resetarEstado()
             }
+
+            atualizarIndicadorConexao(ServerMonitor.isOnline.value)
+            resetarEstado()
         }
     }
 
@@ -380,7 +481,6 @@ class ScannerActivity : TimeoutActivity() {
         binding.tvLastScanQtd.text = "Total neste produto: ${"%.0f".format(qtd)} un."
         binding.tvScanCounter.text = "$totalBipagens bipagens"
         binding.tvStatus.visibility = View.GONE
-        atualizarTextoOperador() // trava o campo após o 1º scan
         if (binding.switchMultiplo.isChecked && scanMode == ScanMode.CAMERA) {
             lifecycleScope.launch {
                 delay(800)
@@ -409,6 +509,10 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     private fun editarQuantidade(item: ScannedItem) {
+        if (!ServerMonitor.isOnline.value) {
+            Toast.makeText(this, "Edição requer conexão com o servidor", Toast.LENGTH_SHORT).show()
+            return
+        }
         val input = EditText(this).apply {
             hint = "Nova quantidade"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -424,15 +528,25 @@ class ScannerActivity : TimeoutActivity() {
                     try {
                         val api = RetrofitClient.build(session)
                         val resp = api.editarBipagem(item.cdproduto, EditarBipagemRequest(
-                            qtde = novaQtde,
+                            qtde       = novaQtde,
                             cddeposito = session.getCdDeposito(),
-                            motivo = "Edição manual no scanner",
-                            deviceId = session.getDeviceId(),
+                            motivo     = "Edição manual no scanner",
+                            deviceId   = session.getDeviceId(),
+                            sessionId  = session.getSessionId(),
                         ))
                         if (resp.isSuccessful) {
                             item.qtde = novaQtde
                             scannedAdapter.notifyDataSetChanged()
                             mostrarUltimoBipado(item.nome, novaQtde)
+                            session.getSessionId()?.let { sid ->
+                                // withLock garante que o SyncManager não lê registros antigos
+                                // enquanto a edição ainda não foi gravada no Room
+                                SyncManager.mutex.withLock {
+                                    withContext(Dispatchers.IO) {
+                                        db.bipag.atualizarQtdeProduto(item.cdproduto, sid, novaQtde)
+                                    }
+                                }
+                            }
                         } else {
                             mostrarErro("Erro ao atualizar quantidade")
                         }
@@ -450,6 +564,66 @@ class ScannerActivity : TimeoutActivity() {
             if (scanMode == ScanMode.CAMERA) delay(200)
             processando = false
             runOnUiThread { resetarBotaoEscanear() }
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(br.com.inventario.R.menu.menu_scanner, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == br.com.inventario.R.id.action_sincronizar) {
+            sincronizarManual()
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
+    private fun sincronizarManual() {
+        val sid = session.getSessionId() ?: return
+        lifecycleScope.launch {
+            Toast.makeText(this@ScannerActivity, "Sincronizando...", Toast.LENGTH_SHORT).show()
+            try {
+                SyncManager.sincronizarPendentes(db, session)
+                val pendentes = db.bipag.countPendentes(sid)
+                val msg = if (pendentes == 0) "Tudo sincronizado!" else "$pendentes scan(s) ainda pendentes"
+                Toast.makeText(this@ScannerActivity, msg, Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) {
+                Toast.makeText(this@ScannerActivity, "Sem conexão com o servidor", Toast.LENGTH_SHORT).show()
+            }
+            atualizarIndicadorConexao(ServerMonitor.isOnline.value)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val sid = session.getSessionId() ?: return
+
+        // UX-1: recalcula totalBipagens a partir do banco ao voltar de outra tela
+        lifecycleScope.launch {
+            val total = withContext(Dispatchers.IO) {
+                db.bipag.getRelatorioOffline(sid, session.getCdDeposito()).sumOf { it.qtdeContada }.toInt()
+            }
+            totalBipagens = total
+            if (total > 0) binding.tvScanCounter.text = "$total bipagens"
+        }
+
+        // UX-3: recarrega mini-lista ao retornar (pode ter sido alterada em RelatorioActivity)
+        lifecycleScope.launch {
+            val itens = withContext(Dispatchers.IO) {
+                db.bipag.getRelatorioOffline(sid, session.getCdDeposito())
+            }
+            scannedItems.clear()
+            itens.take(5).reversed().forEach { item ->
+                scannedItems.add(ScannedItem(item.cdproduto, item.produto, item.qtdeContada))
+            }
+            if (scannedItems.isNotEmpty()) {
+                scannedAdapter.notifyDataSetChanged()
+                binding.rvScanned.visibility = View.VISIBLE
+            } else {
+                binding.rvScanned.visibility = View.GONE
+            }
         }
     }
 

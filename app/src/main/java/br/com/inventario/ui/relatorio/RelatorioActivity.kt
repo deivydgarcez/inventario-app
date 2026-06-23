@@ -20,23 +20,30 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import br.com.inventario.data.api.RetrofitClient
 import br.com.inventario.R
+import br.com.inventario.data.db.InvecDatabase
+import br.com.inventario.data.db.ItemRelatorioLocal
 import br.com.inventario.data.model.ConsolidarRequest
 import br.com.inventario.data.model.EditarBipagemRequest
 import br.com.inventario.data.model.ItemRelatorio
 import br.com.inventario.databinding.ActivityRelatorioBinding
 import br.com.inventario.ui.historico.HistoricoActivity
 import br.com.inventario.ui.recontagem.RecontagemActivity
+import br.com.inventario.util.ServerMonitor
 import br.com.inventario.util.SessionManager
+import br.com.inventario.util.SyncManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 class RelatorioActivity : TimeoutActivity() {
 
     private lateinit var binding: ActivityRelatorioBinding
     private lateinit var session: SessionManager
+    private lateinit var db: InvecDatabase
     private var adapter: RelatorioAdapter? = null
     private var recontagemConfirmada = false
     private var consolidarAposCarregar = false
@@ -47,7 +54,7 @@ class RelatorioActivity : TimeoutActivity() {
     ) { result ->
         recontagemConfirmada = true
         consolidarAposCarregar = result.data?.getBooleanExtra("consolidar_direto", false) == true
-        skipNextResume = true  // onResume() dispara logo após o launcher — evita duplo carregamento
+        skipNextResume = true
         carregarRelatorio()
     }
 
@@ -59,6 +66,7 @@ class RelatorioActivity : TimeoutActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         session = SessionManager(this)
+        db = InvecDatabase.getInstance(this)
         setSupportActionBar(binding.toolbar)
         supportActionBar?.title = "Relatório: ${session.getNomeDeposito()}"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -71,6 +79,7 @@ class RelatorioActivity : TimeoutActivity() {
 
         binding.recycler.layoutManager = LinearLayoutManager(this)
         binding.btnConsolidar.setOnClickListener { confirmarConsolidar() }
+        binding.btnSincronizar.setOnClickListener { sincronizarManual() }
         binding.btnRecontagem.setOnClickListener {
             recontarLauncher.launch(Intent(this, RecontagemActivity::class.java))
         }
@@ -86,11 +95,27 @@ class RelatorioActivity : TimeoutActivity() {
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val pos = viewHolder.adapterPosition
                 if (pos == RecyclerView.NO_POSITION) { carregarRelatorio(); return }
+                if (!ServerMonitor.isOnline.value) {
+                    Toast.makeText(this@RelatorioActivity, "Remoção requer conexão com o servidor", Toast.LENGTH_SHORT).show()
+                    carregarRelatorio()
+                    return
+                }
                 val item = adapter?.getItem(pos) ?: return
                 confirmarRemocao(item, pos)
             }
         }
         ItemTouchHelper(swipeHelper).attachToRecyclerView(binding.recycler)
+
+        ServerMonitor.startOrKeep(session, lifecycleScope)
+
+        // UX-4: atualiza estado dos botões dinamicamente quando a conexão muda
+        lifecycleScope.launch {
+            ServerMonitor.isOnline.collect { online ->
+                val currentAdapter = adapter ?: return@collect
+                val items = (0 until currentAdapter.itemCount).map { currentAdapter.getItem(it) }
+                atualizarResumo(items, online = online)
+            }
+        }
 
         carregarRelatorio()
     }
@@ -103,61 +128,123 @@ class RelatorioActivity : TimeoutActivity() {
 
     private fun carregarRelatorio() {
         binding.progressBar.visibility = View.VISIBLE
+        val sessionId = session.getSessionId()
+        val dep = session.getCdDeposito()
+
         lifecycleScope.launch {
-            try {
-                val api = RetrofitClient.build(session)
-                val dep = session.getCdDeposito()
+            val online = ServerMonitor.isOnline.value
 
-                val deferRelatorio = async { api.relatorio(dep) }
-                val deferResumo   = async { api.resumoContagem(dep) }
+            if (online) {
+                // Sincroniza pendentes antes de exibir relatório completo
+                SyncManager.sincronizarPendentes(db, session)
 
-                val respRelatorio = deferRelatorio.await()
-                val respResumo    = deferResumo.await()
+                // Após sync, nenhum pendente → esconde botão
+                binding.btnSincronizar.visibility = View.GONE
 
-                if (respRelatorio.isSuccessful) {
-                    val items = respRelatorio.body()?.toMutableList() ?: mutableListOf()
+                try {
+                    val api = RetrofitClient.build(session)
+                    val deferRelatorio = async { api.relatorio(dep, sessionId) }
+                    val deferResumo   = async { api.resumoContagem(dep, sessionId) }
+
+                    val respRelatorio = deferRelatorio.await()
+                    val respResumo    = deferResumo.await()
+
+                    if (respRelatorio.isSuccessful) {
+                        val items = respRelatorio.body()?.toMutableList() ?: mutableListOf()
+                        adapter = RelatorioAdapter(items) { item, pos -> editarItem(item, pos) }
+                        binding.recycler.adapter = adapter
+                        binding.tvAvisoNaoContados.visibility = View.GONE
+                        atualizarResumo(items, online = true)
+                        if (consolidarAposCarregar) {
+                            consolidarAposCarregar = false
+                            confirmarConsolidar()
+                        }
+                    } else {
+                        Toast.makeText(this@RelatorioActivity, "Erro ao carregar relatório", Toast.LENGTH_SHORT).show()
+                    }
+
+                    val resumo = respResumo.body()
+                    if (resumo != null && resumo.naoContados > 0) {
+                        val exemplos = if (resumo.produtosNaoContados.isNotEmpty())
+                            "\nEx: " + resumo.produtosNaoContados.take(3).joinToString(", ")
+                        else ""
+                        binding.tvAvisoNaoContados.text =
+                            "⚠ ${resumo.naoContados} produto(s) com estoque não foram contados.$exemplos"
+                        binding.tvAvisoNaoContados.visibility = View.VISIBLE
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Modo offline: constrói relatório a partir do Room
+                if (sessionId != null) {
+                    val locais = withContext(Dispatchers.IO) {
+                        db.bipag.getRelatorioOffline(sessionId, dep)
+                    }
+                    val items = locais.map { it.toItemRelatorio() }.toMutableList()
                     adapter = RelatorioAdapter(items) { item, pos -> editarItem(item, pos) }
                     binding.recycler.adapter = adapter
-                    atualizarResumo(items)
-                    if (consolidarAposCarregar) {
-                        consolidarAposCarregar = false
-                        confirmarConsolidar()
+                    atualizarResumo(items, online = false)
+
+                    val pendentes = withContext(Dispatchers.IO) { db.bipag.countPendentes(sessionId) }
+                    if (pendentes > 0) {
+                        binding.tvAvisoNaoContados.text = "$pendentes scan(s) aguardando sincronização com o servidor"
+                        binding.tvAvisoNaoContados.setBackgroundColor(0xFFE65100.toInt())
+                        binding.tvAvisoNaoContados.visibility = View.VISIBLE
+                        binding.btnSincronizar.visibility = View.VISIBLE
+                    } else {
+                        binding.tvAvisoNaoContados.visibility = View.GONE
+                        binding.btnSincronizar.visibility = View.GONE
                     }
                 } else {
-                    Toast.makeText(this@RelatorioActivity, "Erro ao carregar relatório", Toast.LENGTH_SHORT).show()
-                }
-
-                val resumo = respResumo.body()
-                if (resumo != null && resumo.naoContados > 0) {
-                    val exemplos = if (resumo.produtosNaoContados.isNotEmpty())
-                        "\nEx: " + resumo.produtosNaoContados.take(3).joinToString(", ")
-                    else ""
-                    binding.tvAvisoNaoContados.text =
-                        "⚠ ${resumo.naoContados} produto(s) com estoque não foram contados nesta sessão.$exemplos"
+                    binding.tvAvisoNaoContados.text = "Sem sessão ativa — selecione um depósito"
+                    binding.tvAvisoNaoContados.setBackgroundColor(0xFF616161.toInt())
                     binding.tvAvisoNaoContados.visibility = View.VISIBLE
-                } else {
-                    binding.tvAvisoNaoContados.visibility = View.GONE
+                    binding.btnSincronizar.visibility = View.GONE
                 }
-            } catch (e: Exception) {
-                Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
-            } finally {
-                binding.progressBar.visibility = View.GONE
             }
+
+            binding.progressBar.visibility = View.GONE
         }
     }
 
-    private fun atualizarResumo(items: List<ItemRelatorio>) {
-        val divergencias = items.count { abs(it.diferenca ?: 0.0) > 0.001 }
-        binding.tvTotal.text = if (divergencias > 0)
-            "${items.size} itens · $divergencias com divergência"
-        else
-            "${items.size} itens · tudo OK"
+    private fun sincronizarManual() {
+        if (!ServerMonitor.isOnline.value) {
+            Toast.makeText(this, "Sem conexão com o servidor", Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.btnSincronizar.isEnabled = false
+        binding.btnSincronizar.text = "Sincronizando..."
+        binding.progressBar.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            SyncManager.sincronizarPendentes(db, session)
+            carregarRelatorio()
+            binding.btnSincronizar.isEnabled = true
+            binding.btnSincronizar.text = "↑ Sincronizar com servidor agora"
+        }
+    }
 
+    private fun atualizarResumo(items: List<ItemRelatorio>, online: Boolean = true) {
+        val divergencias = items.count { abs(it.diferenca ?: 0.0) > 0.001 }
         val temItens = items.isNotEmpty()
+
+        // Chip online/offline
+        val pillColor = if (online) 0xFF388E3C.toInt() else 0xFF757575.toInt()
+        binding.tvOnlinePill.text = if (online) "● Online" else "● Offline"
+        (binding.tvOnlinePill.background as? android.graphics.drawable.GradientDrawable)
+            ?.setColor(pillColor)
+
+        binding.tvTotal.text = when {
+            !temItens -> "Nenhum item bipado"
+            divergencias > 0 -> "${items.size} itens · $divergencias divergência(s)"
+            else -> "${items.size} itens · sem divergências"
+        }
+
         binding.tvDicaSwipe.visibility = if (temItens) View.VISIBLE else View.GONE
 
+        // Botão Recontagem
         if (divergencias > 0) {
-            binding.btnRecontagem.text = "✓ Fazer Recontagem (Recomendado)"
+            binding.btnRecontagem.text = "✓ Recontagem recomendada"
             binding.btnRecontagem.backgroundTintList =
                 android.content.res.ColorStateList.valueOf(0xFF388E3C.toInt())
         } else {
@@ -165,17 +252,26 @@ class RelatorioActivity : TimeoutActivity() {
             binding.btnRecontagem.backgroundTintList =
                 android.content.res.ColorStateList.valueOf(0xFF757575.toInt())
         }
-
         binding.btnRecontagem.isEnabled = temItens
-        binding.btnHistorico.isEnabled = true
 
+        // Aviso + botão Consolidar
         val bloqueado = session.isConsolidarBloqueado(session.getCdDeposito())
-        if (bloqueado) {
-            binding.btnConsolidar.isEnabled = false
-            binding.tvAvisoBloqueio.visibility = View.VISIBLE
-        } else {
-            binding.btnConsolidar.isEnabled = temItens
-            binding.tvAvisoBloqueio.visibility = View.GONE
+        when {
+            !online -> {
+                binding.tvAvisoBloqueio.text = "⚠ Sem conexão — consolidação indisponível"
+                binding.tvAvisoBloqueio.setBackgroundColor(0xFF616161.toInt())
+                binding.tvAvisoBloqueio.visibility = View.VISIBLE
+                binding.btnConsolidar.isEnabled = false
+            }
+            bloqueado -> {
+                binding.tvAvisoBloqueio.setBackgroundColor(0xFFFF8F00.toInt())
+                binding.tvAvisoBloqueio.visibility = View.VISIBLE
+                binding.btnConsolidar.isEnabled = false
+            }
+            else -> {
+                binding.tvAvisoBloqueio.visibility = View.GONE
+                binding.btnConsolidar.isEnabled = temItens
+            }
         }
     }
 
@@ -234,13 +330,14 @@ class RelatorioActivity : TimeoutActivity() {
                         val resp = api.removerBipagem(
                             item.cdproduto,
                             session.getCdDeposito(),
-                            motivo = motivo,
-                            deviceId = session.getDeviceId(),
+                            motivo    = motivo,
+                            deviceId  = session.getDeviceId(),
+                            sessionId = session.getSessionId(),
                         )
                         if (resp.isSuccessful) {
                             adapter?.removeItem(position)
                             val currentItems = (0 until (adapter?.itemCount ?: 0)).map { adapter!!.getItem(it) }
-                            atualizarResumo(currentItems)
+                            atualizarResumo(currentItems, online = ServerMonitor.isOnline.value)
                         } else {
                             Toast.makeText(this@RelatorioActivity, "Erro ao remover item", Toast.LENGTH_SHORT).show()
                             carregarRelatorio()
@@ -305,7 +402,7 @@ class RelatorioActivity : TimeoutActivity() {
         dialog.show()
     }
 
-    private fun pedirSupervisor() {
+    private fun pedirSupervisor(mensagem: String = "Há divergências. Um supervisor diferente de você deve autorizar esta consolidação.") {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 16, 48, 0)
@@ -320,7 +417,7 @@ class RelatorioActivity : TimeoutActivity() {
 
         AlertDialog.Builder(this)
             .setTitle("Autorização do supervisor")
-            .setMessage("Há divergências. Um supervisor diferente de você deve autorizar esta consolidação.")
+            .setMessage(mensagem)
             .setView(layout)
             .setPositiveButton("Autorizar e Consolidar") { _, _ ->
                 val login = etLogin.text.toString().trim()
@@ -345,33 +442,70 @@ class RelatorioActivity : TimeoutActivity() {
 
     private fun consolidar(supervisorLogin: String?, supervisorSenha: String?) {
         binding.progressBar.visibility = View.VISIBLE
+        val sessionId = session.getSessionId()
         lifecycleScope.launch {
             try {
                 val api = RetrofitClient.build(session)
                 val response = api.consolidar(ConsolidarRequest(
-                    cddeposito = session.getCdDeposito(),
-                    operador = session.getOperador(),
-                    supervisorLogin = supervisorLogin,
-                    supervisorSenha = supervisorSenha,
+                    cddeposito         = session.getCdDeposito(),
+                    operador           = session.getOperador(),
+                    supervisorLogin    = supervisorLogin,
+                    supervisorSenha    = supervisorSenha,
                     recontagemConfirmada = recontagemConfirmada,
+                    sessionId          = sessionId,
                 ))
                 if (response.isSuccessful) {
                     recontagemConfirmada = false
                     session.setConsolidarBloqueado(session.getCdDeposito(), false)
+
+                    // Limpa dados locais desta sessão e inicia uma nova
+                    if (sessionId != null) {
+                        withContext(Dispatchers.IO) { db.bipag.deleteAllDaSessao(sessionId) }
+                    }
+                    session.encerrarSession()
+
                     val body = response.body()
                     val inv = body?.idinventario?.let { " (Inv. nº $it)" } ?: ""
                     val msg = (body?.mensagem ?: "Consolidado com sucesso") + inv
                     Toast.makeText(this@RelatorioActivity, msg, Toast.LENGTH_LONG).show()
                     carregarRelatorio()
                 } else {
+                    val errorBody = response.errorBody()?.string() ?: ""
                     val detail = try {
-                        val body = response.errorBody()?.string() ?: ""
-                        org.json.JSONObject(body).getString("detail")
+                        org.json.JSONObject(errorBody).getString("detail")
                     } catch (_: Exception) { "Erro ao consolidar" }
-                    Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
+                    // Servidor exige supervisor (edições desta sessão) — abre dialog automaticamente
+                    if (response.code() == 403 && detail.contains("Supervisor", ignoreCase = true)) {
+                        pedirSupervisor(detail)
+                    } else {
+                        Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
+                    }
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+                // BUG-1: verifica se a consolidação ocorreu apesar do timeout de rede
+                var consolidouSilenciosamente = false
+                if (e is java.io.IOException || e is java.net.SocketTimeoutException) {
+                    try {
+                        val histResp = RetrofitClient.build(session).historico(session.getCdDeposito())
+                        if (histResp.isSuccessful) {
+                            val hoje = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                                .format(java.util.Date())
+                            consolidouSilenciosamente = histResp.body()?.firstOrNull()?.data?.startsWith(hoje) == true
+                        }
+                    } catch (_: Exception) {}
+                }
+                if (consolidouSilenciosamente) {
+                    recontagemConfirmada = false
+                    session.setConsolidarBloqueado(session.getCdDeposito(), false)
+                    if (sessionId != null) {
+                        withContext(Dispatchers.IO) { db.bipag.deleteAllDaSessao(sessionId) }
+                    }
+                    session.encerrarSession()
+                    Toast.makeText(this@RelatorioActivity, "Consolidação verificada no histórico. Dados atualizados.", Toast.LENGTH_LONG).show()
+                    carregarRelatorio()
+                } else {
+                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             } finally {
                 binding.progressBar.visibility = View.GONE
             }
@@ -383,16 +517,17 @@ class RelatorioActivity : TimeoutActivity() {
             try {
                 val api = RetrofitClient.build(session)
                 val resp = api.editarBipagem(item.cdproduto, EditarBipagemRequest(
-                    qtde = novaQtde,
+                    qtde       = novaQtde,
                     cddeposito = session.getCdDeposito(),
-                    motivo = motivo,
-                    deviceId = session.getDeviceId(),
+                    motivo     = motivo,
+                    deviceId   = session.getDeviceId(),
+                    sessionId  = session.getSessionId(),
                 ))
                 if (resp.isSuccessful) {
                     adapter?.updateItem(position, novaQtde)
                     Toast.makeText(this@RelatorioActivity, "Quantidade atualizada", Toast.LENGTH_SHORT).show()
                     val currentItems = (0 until (adapter?.itemCount ?: 0)).map { adapter!!.getItem(it) }
-                    atualizarResumo(currentItems)
+                    atualizarResumo(currentItems, online = true)
                 } else {
                     val detail = try {
                         org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
@@ -405,3 +540,13 @@ class RelatorioActivity : TimeoutActivity() {
         }
     }
 }
+
+private fun ItemRelatorioLocal.toItemRelatorio() = ItemRelatorio(
+    cdproduto   = cdproduto,
+    produto     = produto,
+    codigobarra = codigobarra,
+    qtde_sistema = qtdeSistema,
+    qtde_contada = qtdeContada,
+    diferenca   = diferenca,
+    operador    = operador,
+)

@@ -1,5 +1,135 @@
 # CHANGELOG — Invec
 
+## [1.2.0] — 2026-06-22
+
+### Modo offline-first + correções de bugs
+
+---
+
+#### Arquitetura — Modo Offline-First
+
+O app agora funciona sem conexão contínua com o servidor.
+
+**Backend — `app/migrations.py`**
+- Nova tabela `INVENTARIO_SESSAO`: registra cada sessão de coleta por dispositivo (`SESSION_ID UUID`, `CDDEPOSITO`, `OPERADOR`, `USUARIO`, `STATUS`, `INICIO`, `FIM`)
+- Nova tabela `LOTES_PROCESSADOS`: garante idempotência — lote de bipagens já processado não duplica dados mesmo se sincronizado duas vezes
+
+**Backend — `app/routers/inventario.py`**
+- `POST /inventario/bipagem/lote`: recebe um lote de bipagens acumuladas offline por SESSION_ID; atômico, idempotente via LOTES_PROCESSADOS; detecta alertas de quantidade; registra LOG_INVENTARIO
+- `POST /sessao/iniciar`: cria ou retorna sessão existente em INVENTARIO_SESSAO (idempotente)
+- `GET /ping`: endpoint sem autenticação; retorna `{"status":"ok"}` — usado pelo ServerMonitor Android
+
+**Android — `util/ServerMonitor.kt`** (novo singleton)
+- Pinga `/ping` a cada 30 segundos em coroutine
+- Expõe `StateFlow<Boolean> isOnline` — observado por todas as Activities
+- `startOrKeep()` garante apenas um loop de ping ativo
+
+**Android — `util/SyncManager.kt`** (novo object singleton)
+- Observa `ServerMonitor.isOnline` e dispara sincronização na transição offline→online
+- Retry automático a cada 60 segundos enquanto online
+- Mutex (`withLock`) garante apenas uma sincronização por vez e serializa com carregamento do relatório
+- Agrupa bipagens por SESSION_ID e cdproduto antes de enviar (reduz requisições)
+
+**Android — `data/db/InvecDatabase.kt`** + DAOs (Room)
+- `bipagens_pendentes`: armazena cada scan antes de confirmar com o servidor
+- `produtos_cache`: cache local do catálogo de produtos para busca offline
+- `BipagPendenteDao`: `getNaoSincronizados`, `marcarSincronizados`, `getQtdeSistema`, `deleteAllDaSessao`
+- `ProdutoCacheDao`: `upsert`, `getByBarcode`, `buscarPorNome`
+
+**Android — `util/SessionManager.kt`** — campos adicionados
+- `session_id`: UUID gerado ao entrar no depósito, identifica a sessão no servidor
+- `consolidar_bloqueado_{dep}`: flag persistida quando há divergências pendentes
+- `getSessionId()`, `encerrarSession()`, `isConsolidarBloqueado()`, `setConsolidarBloqueado()`
+
+**Android — `ui/relatorio/RelatorioActivity.kt`**
+- Offline: constrói relatório a partir do Room (bipagens pendentes) sem chamar o servidor
+- Online: sincroniza pendentes via `SyncManager.sincronizarPendentes()` antes de carregar relatório
+- Chip Online/Offline muda dinamicamente via `ServerMonitor.isOnline.collect`
+- `btnSincronizar` visível quando há pendentes não sincronizados offline
+- Consolidar desabilitado quando offline
+
+**Android — `ui/scanner/ScannerActivity.kt`**
+- Scan offline: registra em Room imediatamente; POST ao servidor em background se online
+- Snapshot `QTDEATUAL_SNAP` gravado no 1º scan de cada produto → relatório e consolidação usam o valor do momento do scan, não o estoque atual (correto para lojas em movimento)
+
+---
+
+#### Layout — Relatório Redesenhado
+
+**Android — `res/layout/activity_relatorio.xml`** (reescrita)
+- **Barra de resumo** no topo: pill Online/Offline + contador de itens + ProgressBar
+- **Dica de swipe** visível apenas quando há itens
+- **RecyclerView** ocupa todo o espaço disponível
+- **Card de ações** na base com elevação: Histórico|Auditoria → btnSincronizar → Recontagem → aviso acima do Consolidar → Consolidar
+- Avisos organizados por contexto: "sem conexão" em cinza, "bloqueado" em laranja, "pendentes" em vermelho
+
+**Android — `res/drawable/bg_pill.xml`** (novo)
+- Fundo arredondado do chip Online/Offline; cor alterada dinamicamente em código
+
+---
+
+#### Correções de Bugs
+
+**Bug: Produtos sumiam ao voltar online**
+- Causa: `SyncManager.sincronizarPendentes()` usava `tryLock()` — quando `observarESync` já tinha o mutex, o carregamento do relatório pulava a sincronização e mostrava lista vazia
+- Fix: substituído por `mutex.withLock {}` — carregamento aguarda a sincronização terminar em vez de pular
+
+**Bug: Histórico sem horário**
+- Causa: `DTMOVIMENTO` em `MOV_PRODUTO` é tipo `DATE` (sem hora)
+- Fix: subquery correlacionada em `LOG_INVENTARIO` com `MOTIVO CONTAINING 'inv#{idinventario}'` recupera o TIMESTAMP exato da consolidação; fallback para `CAST(DTMOVIMENTO AS TIMESTAMP)` se não encontrar
+
+**Bug: Consolidar travado em sessões antigas (BANCO-1)**
+- Causa: sessões criadas antes de `STATUS` existir têm `STATUS IS NULL` — a query de lock exigia `STATUS = 'ABERTA'`
+- Fix: condição ampliada para `STATUS = 'ABERTA' OR STATUS IS NULL`
+
+**Bug: Falso bloqueio de login após reinicialização**
+- Causa: registros `LOGIN_FALHOU` em `LOG_INVENTARIO` acumulavam de sessões anteriores
+- Fix: ao fazer login com sucesso, deleta todos os `LOGIN_FALHOU` do usuário no banco
+
+**Bug: Horário não aparecia no log de auditoria**
+- Causa: em servidores com `LOG_INVENTARIO` criado por versão anterior, coluna `DATA_HORA` era `DATE` em vez de `TIMESTAMP`
+- Fix: migration automática detecta tipo `DATE` (field_type=12 no Firebird) e executa `ALTER TABLE LOG_INVENTARIO ALTER DATA_HORA TYPE TIMESTAMP`
+
+**Bug: Auditoria retornava 403 para gerentes com token antigo**
+- Causa: JWTs emitidos antes de `idgrupo` ser incluído no payload resultavam em `idgrupo=None → 3 (operador)`
+- Fix: fallback deriva `idgrupo` do campo `role` para tokens sem `idgrupo`
+
+**Bug: Cores de tipo misturavam entre linhas na Auditoria**
+- Causa: `tvTipo.background.setTint(cor)` modificava drawable compartilhado entre todos os ViewHolders
+- Fix: `tvTipo.background.mutate().setTint(cor)` — instância independente por view
+
+**Bug: Consolidar falhava silenciosamente quando havia edições sem divergências**
+- Causa: servidor exige supervisor quando `teve_edicoes=True` mesmo sem divergências, mas o client não detectava isso e chamava `consolidar(null, null)`
+- Fix: quando servidor retorna 403 com "Supervisor" na mensagem, o dialog de supervisor abre automaticamente
+
+**Bug: RecontagemActivity não compilava**
+- Causa: `withContext` e `Dispatchers` usados sem import
+- Fix: adicionados `import kotlinx.coroutines.Dispatchers` e `import kotlinx.coroutines.withContext`
+
+#### Outros
+- Gradle: `9.5.0` → `9.5.1` (aviso de versão desatualizada eliminado)
+
+---
+
+#### Arquivos criados / modificados
+
+**Backend:**
+- `app/migrations.py` — tabelas `INVENTARIO_SESSAO`, `LOTES_PROCESSADOS`; migration `DATA_HORA TIMESTAMP`
+- `app/routers/inventario.py` — `/ping`, `/sessao/iniciar`, `/bipagem/lote`, fix histórico, fix consolidar lock, fix auditoria idgrupo
+
+**Android:**
+- `util/ServerMonitor.kt` — novo singleton de conectividade
+- `util/SyncManager.kt` — novo object de sincronização offline→online (com `withLock`)
+- `data/db/InvecDatabase.kt` — Room database com bipagens_pendentes e produtos_cache
+- `res/layout/activity_relatorio.xml` — redesenho completo
+- `res/drawable/bg_pill.xml` — drawable do chip Online/Offline
+- `ui/relatorio/RelatorioActivity.kt` — modo offline, pill, retry supervisor
+- `ui/recontagem/RecontagemActivity.kt` — imports corrigidos
+- `ui/auditoria/AuditoriaActivity.kt` — drawable mutate fix
+- `gradle/wrapper/gradle-wrapper.properties` — Gradle 9.5.1
+
+---
+
 ## [1.1.0] — 2026-06-19
 
 ### Segurança, performance e sistema de licença
