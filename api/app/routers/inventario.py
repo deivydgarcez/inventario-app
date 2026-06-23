@@ -35,6 +35,13 @@ _supervisor_tokens: dict[str, dict] = {}
 _supervisor_tokens_lock = threading.Lock()
 _SUPERVISOR_TOKEN_TTL = 300  # 5 minutos
 
+# SEC-5: rate limit no pré-auth do supervisor (mesmo esquema do login)
+_sup_tentativas: dict[str, list[float]] = {}
+_sup_bloqueados: dict[str, float] = {}
+_SUP_MAX_TENTATIVAS = 5
+_SUP_JANELA_SEGUNDOS = 60
+_SUP_BLOQUEIO_SEGUNDOS = 300
+
 
 # ── Helpers internos ──────────────────────────────────────────────────────────
 
@@ -140,8 +147,10 @@ def _verificar_acesso_deposito(current_user: dict, cddeposito: int) -> None:
                 )
     except HTTPException:
         raise
-    except Exception:
-        pass  # se USUARIO_DEPOSITO ainda não existe (migration pendente), permite acesso
+    except Exception as e:
+        # Só ignora se a tabela ainda não existe (migration pendente no primeiro startup)
+        if "unknown" not in str(e).lower() and "not found" not in str(e).lower():
+            raise HTTPException(status_code=500, detail="Erro ao verificar permissão de depósito")
 
 
 def _validar_supervisor_token(token: str) -> dict:
@@ -167,6 +176,22 @@ def supervisor_pre_auth(
 ):
     """SEC-2: Supervisor autentica previamente e recebe token válido por 5 min.
     O token é usado no consolidar em vez de enviar a senha em texto plano."""
+    # SEC-5: rate limit por login do supervisor (mesmo esquema do /auth/login)
+    agora = time.time()
+    chave = f"sup:{body.login.lower()}"
+    if chave in _sup_bloqueados:
+        if agora < _sup_bloqueados[chave]:
+            restante = int(_sup_bloqueados[chave] - agora)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Muitas tentativas. Tente novamente em {restante} segundos.",
+            )
+        del _sup_bloqueados[chave]
+        _sup_tentativas.pop(chave, None)
+    _sup_tentativas[chave] = [
+        t for t in _sup_tentativas.get(chave, []) if agora - t < _SUP_JANELA_SEGUNDOS
+    ]
+
     with get_connection() as con:
         cur = con.cursor()
         cur.execute(
@@ -176,11 +201,19 @@ def supervisor_pre_auth(
         )
         sup = fetchone_as_dict(cur)
 
-    if not sup:
+    senha_mobile = (sup.get("senhamobile") or "") if sup else ""
+    credenciais_ok = sup and senha_mobile and senha_mobile == body.senha
+
+    if not credenciais_ok:
+        _sup_tentativas.setdefault(chave, []).append(agora)
+        if len(_sup_tentativas[chave]) >= _SUP_MAX_TENTATIVAS:
+            _sup_bloqueados[chave] = agora + _SUP_BLOQUEIO_SEGUNDOS
+            _sup_tentativas.pop(chave, None)
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
-    senha_mobile = sup.get("senhamobile") or ""
-    if not senha_mobile or senha_mobile != body.senha:
-        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+
+    _sup_tentativas.pop(chave, None)
+    _sup_bloqueados.pop(chave, None)
+
     if (sup.get("idgrupo") or 3) not in (1, 2):
         raise HTTPException(status_code=403, detail="Supervisor precisa ser gerente ou administrador")
 

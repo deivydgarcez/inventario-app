@@ -112,12 +112,15 @@ def login(body: LoginRequest, request: Request):
         _tentativas.pop(chave, None)
         _bloqueados.pop(chave, None)
 
-    # SEC-3: limpa falhas persistentes no banco ao fazer login com sucesso (evita falso bloqueio futuro)
+    # SEC-3: limpa falhas RECENTES no banco ao fazer login com sucesso (evita falso bloqueio futuro).
+    # Apaga só a janela de bloqueio (_DB_JANELA_MINUTOS) — histórico mais antigo é retido para auditoria.
     try:
         with get_connection() as log_con:
             log_con.cursor().execute(
-                "DELETE FROM LOG_INVENTARIO WHERE TIPO = 'LOGIN_FALHOU' AND LOGIN_USUARIO = ?",
-                (body.login.lower(),),
+                "DELETE FROM LOG_INVENTARIO "
+                "WHERE TIPO = 'LOGIN_FALHOU' AND LOGIN_USUARIO = ? "
+                "AND DATA_HORA > DATEADD(MINUTE, ?, CURRENT_TIMESTAMP)",
+                (body.login.lower(), -_DB_JANELA_MINUTOS),
             )
     except Exception:
         pass

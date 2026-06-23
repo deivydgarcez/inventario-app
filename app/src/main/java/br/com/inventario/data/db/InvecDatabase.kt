@@ -202,10 +202,11 @@ class BipagPendenteDao(private val helper: InvecDatabase) {
         val db = helper.writableDatabase
         db.beginTransaction()
         try {
-            db.execSQL(
-                "UPDATE bipagens_pendentes SET sincronizado=1 WHERE cdproduto=? AND session_id=?",
-                arrayOf(cdproduto.toString(), sessionId)
-            )
+            // Deleta todos os scans antigos deste produto na sessão — o novo registro consolidado
+            // substitui o histórico. Necessário para que getRelatorioOffline (que usa SUM) não some
+            // os scans velhos + a quantidade editada e mostre valor errado no modo offline.
+            db.delete("bipagens_pendentes", "cdproduto=? AND session_id=?",
+                arrayOf(cdproduto.toString(), sessionId))
             db.insert("bipagens_pendentes", null, cv)
             db.setTransactionSuccessful()
         } finally {

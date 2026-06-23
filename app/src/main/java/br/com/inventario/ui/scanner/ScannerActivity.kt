@@ -415,61 +415,69 @@ class ScannerActivity : TimeoutActivity() {
         val cddeposito = session.getCdDeposito()
 
         lifecycleScope.launch {
-            // Snapshot de estoque: igual ao 1º scan deste produto na sessão
-            val qtdeSistema = db.bipag.getQtdeSistema(produto.cdproduto, sessionId)
-                ?: (produto.qtdeatual ?: 0.0)
-
-            // UUID único por scan — permite idempotência no servidor caso timeout de rede gere retry via lote
-            val scanId = java.util.UUID.randomUUID().toString()
-
-            // 1. Salvar em Room imediatamente (funciona offline)
-            val rowId = db.bipag.insert(BipagPendente(
-                sessionId   = sessionId,
-                cdproduto   = produto.cdproduto,
-                produto     = produto.produto,
-                codigobarra = produto.codigobarra,
-                qtde        = 1.0,
-                cddeposito  = cddeposito,
-                operador    = session.getOperador(),
-                deviceId    = session.getDeviceId(),
-                qtdeSistema = qtdeSistema,
-                scanId      = scanId,
-            ))
-
-            // 2. Quantidade acumulada calculada localmente
-            val novaQtde = db.bipag.getQtdeAcumulada(produto.cdproduto, sessionId)
-
-            totalBipagens++
-            atualizarMiniLista(produto.cdproduto, produto.produto, novaQtde)
-            mostrarUltimoBipado(produto.produto, novaQtde)
-
-            // 3. Sincronização imediata se online
-            if (ServerMonitor.isOnline.value) {
-                try {
-                    val api = RetrofitClient.build(session)
-                    val resp = api.registrarBipagem(BipagemRequest(
-                        cdproduto  = produto.cdproduto,
-                        cddeposito = cddeposito,
-                        qtde       = 1.0,
-                        operador   = session.getOperador(),
-                        deviceId   = session.getDeviceId(),
-                        sessionId  = sessionId,
-                        scanId     = scanId,
-                    ))
-                    if (resp.isSuccessful) {
-                        db.bipag.marcarSincronizado(rowId)
-                        val alerta = resp.body()?.alerta
-                        if (!alerta.isNullOrBlank()) mostrarAlertaQuantidade(produto.produto, alerta)
-                    }
-                } catch (_: Exception) {
-                    // UX-2: atualiza status de conexão imediatamente sem aguardar o ciclo de 30s
-                    ServerMonitor.forcePing(session, lifecycleScope)
-                }
+            try { _registrarBipagemInterno(produto, sessionId, cddeposito) }
+            catch (e: Exception) {
+                mostrarErro("Erro ao salvar scan: ${e.message}")
+                resetarEstado()
             }
-
-            atualizarIndicadorConexao(ServerMonitor.isOnline.value)
-            resetarEstado()
         }
+    }
+
+    private suspend fun _registrarBipagemInterno(produto: Produto, sessionId: String, cddeposito: Int) {
+        // Snapshot de estoque: igual ao 1º scan deste produto na sessão
+        val qtdeSistema = db.bipag.getQtdeSistema(produto.cdproduto, sessionId)
+            ?: (produto.qtdeatual ?: 0.0)
+
+        // UUID único por scan — permite idempotência no servidor caso timeout de rede gere retry via lote
+        val scanId = java.util.UUID.randomUUID().toString()
+
+        // 1. Salvar em Room imediatamente (funciona offline)
+        val rowId = db.bipag.insert(BipagPendente(
+            sessionId   = sessionId,
+            cdproduto   = produto.cdproduto,
+            produto     = produto.produto,
+            codigobarra = produto.codigobarra,
+            qtde        = 1.0,
+            cddeposito  = cddeposito,
+            operador    = session.getOperador(),
+            deviceId    = session.getDeviceId(),
+            qtdeSistema = qtdeSistema,
+            scanId      = scanId,
+        ))
+
+        // 2. Quantidade acumulada calculada localmente
+        val novaQtde = db.bipag.getQtdeAcumulada(produto.cdproduto, sessionId)
+
+        totalBipagens++
+        atualizarMiniLista(produto.cdproduto, produto.produto, novaQtde)
+        mostrarUltimoBipado(produto.produto, novaQtde)
+
+        // 3. Sincronização imediata se online
+        if (ServerMonitor.isOnline.value) {
+            try {
+                val api = RetrofitClient.build(session)
+                val resp = api.registrarBipagem(BipagemRequest(
+                    cdproduto  = produto.cdproduto,
+                    cddeposito = cddeposito,
+                    qtde       = 1.0,
+                    operador   = session.getOperador(),
+                    deviceId   = session.getDeviceId(),
+                    sessionId  = sessionId,
+                    scanId     = scanId,
+                ))
+                if (resp.isSuccessful) {
+                    db.bipag.marcarSincronizado(rowId)
+                    val alerta = resp.body()?.alerta
+                    if (!alerta.isNullOrBlank()) mostrarAlertaQuantidade(produto.produto, alerta)
+                }
+            } catch (_: Exception) {
+                // UX-2: atualiza status de conexão imediatamente sem aguardar o ciclo de 30s
+                ServerMonitor.forcePing(session, lifecycleScope)
+            }
+        }
+
+        atualizarIndicadorConexao(ServerMonitor.isOnline.value)
+        resetarEstado()
     }
 
     private fun mostrarAlertaQuantidade(nomeProduto: String, alerta: String) {
