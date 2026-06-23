@@ -108,12 +108,17 @@ class RelatorioActivity : TimeoutActivity() {
 
         ServerMonitor.startOrKeep(session, lifecycleScope)
 
-        // UX-4: atualiza estado dos botões dinamicamente quando a conexão muda
+        // Ao voltar online: sincroniza e recarrega do servidor antes de habilitar Consolidar.
+        // Ao ficar offline: atualiza chip/botões sem recarregar (dados do adapter ainda válidos).
         lifecycleScope.launch {
             ServerMonitor.isOnline.collect { online ->
-                val currentAdapter = adapter ?: return@collect
-                val items = (0 until currentAdapter.itemCount).map { currentAdapter.getItem(it) }
-                atualizarResumo(items, online = online)
+                if (online && adapter != null) {
+                    carregarRelatorio()
+                } else {
+                    val currentAdapter = adapter ?: return@collect
+                    val items = (0 until currentAdapter.itemCount).map { currentAdapter.getItem(it) }
+                    atualizarResumo(items, online = false)
+                }
             }
         }
 
