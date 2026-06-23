@@ -67,10 +67,13 @@ object SyncManager {
 
                 try {
                     val loteId = UUID.randomUUID().toString()
-                    api.sincronizarLote(LoteBipagemRequest(sid, cddeposito, lote, loteId))
-                    db.bipag.marcarSincronizados(items.map { it.id })
+                    val resp = api.sincronizarLote(LoteBipagemRequest(sid, cddeposito, lote, loteId))
+                    if (resp.isSuccessful) {
+                        db.bipag.marcarSincronizados(items.map { it.id })
+                    }
+                    // else: 4xx/5xx → deixa pendente para o próximo ciclo
                 } catch (_: Exception) {
-                    // deixa pendente para o próximo ciclo
+                    // erro de rede → deixa pendente para o próximo ciclo
                 }
             }
         }
