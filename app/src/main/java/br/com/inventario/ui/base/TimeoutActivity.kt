@@ -41,6 +41,23 @@ abstract class TimeoutActivity : AppCompatActivity() {
 
     open fun onSessionTimeout() {
         val session = SessionManager(this)
+        val sessionId = session.getSessionId()
+        if (sessionId != null && br.com.inventario.util.ServerMonitor.isOnline.value) {
+            val api = try { RetrofitClient.build(session) } catch (_: Exception) { null }
+            if (api != null) {
+                lifecycleScope.launch {
+                    try { api.encerrarSessao(sessionId) } catch (_: Exception) {}
+                    session.logout()
+                    RetrofitClient.reset()
+                    startActivity(Intent(this@TimeoutActivity, LoginActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        putExtra("timeout", true)
+                    })
+                    finish()
+                }
+                return
+            }
+        }
         session.logout()
         RetrofitClient.reset()
         startActivity(Intent(this, LoginActivity::class.java).apply {

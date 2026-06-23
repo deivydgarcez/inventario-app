@@ -50,6 +50,7 @@ class BipagemRequest(BaseModel):
     operador: Optional[str] = None
     device_id: Optional[str] = None
     session_id: Optional[str] = None
+    scan_id: Optional[str] = None
 
 
 class BipagemResponse(BaseModel):
@@ -159,6 +160,7 @@ class BipagemLoteItem(BaseModel):
     operador: Optional[str] = None
     device_id: Optional[str] = None
     timestamp: Optional[int] = None
+    scan_ids: Optional[List[str]] = None
 
 
 class LoteBipagemRequest(BaseModel):

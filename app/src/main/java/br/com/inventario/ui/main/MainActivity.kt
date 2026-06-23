@@ -228,6 +228,20 @@ class MainActivity : TimeoutActivity() {
     }
 
     private fun fazerLogout() {
+        val sessionId = session.getSessionId()
+        if (sessionId != null && ServerMonitor.isOnline.value) {
+            val api = try { RetrofitClient.build(session) } catch (_: Exception) { null }
+            if (api != null) {
+                lifecycleScope.launch {
+                    try { api.encerrarSessao(sessionId) } catch (_: Exception) {}
+                    session.logout()
+                    RetrofitClient.reset()
+                    startActivity(Intent(this@MainActivity, LoginActivity::class.java))
+                    finish()
+                }
+                return
+            }
+        }
         session.logout()
         RetrofitClient.reset()
         startActivity(Intent(this, LoginActivity::class.java))

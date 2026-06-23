@@ -209,6 +209,28 @@ def registrar_bipagem(
     if body.qtde <= 0:
         raise HTTPException(status_code=400, detail="Quantidade deve ser maior que zero")
 
+    # Idempotência por scan_id: se o scan já foi processado (ex: timeout de rede), retorna qtde atual
+    if body.scan_id:
+        try:
+            with get_connection() as con:
+                cur = con.cursor()
+                cur.execute("SELECT COUNT(*) FROM SCANS_PROCESSADOS WHERE SCAN_ID = ?", (body.scan_id,))
+                if cur.fetchone()[0] > 0:
+                    cur.execute(
+                        "SELECT COALESCE(QTDE, 0) FROM INVENTARIO_TEMP "
+                        "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ?",
+                        (body.cdproduto, body.cddeposito, body.session_id),
+                    )
+                    row = cur.fetchone()
+                    nova_qtde = float(row[0]) if row else body.qtde
+                    return BipagemResponse(
+                        cdproduto=body.cdproduto, cddeposito=body.cddeposito,
+                        qtde=body.qtde, nova_qtde=nova_qtde,
+                        mensagem="Scan já processado (idempotente)", alerta=None,
+                    )
+        except Exception as e:
+            print(f"[scan] idempotência check: {e}")
+
     nova_qtde = 0.0
     mensagem = ""
     nome_produto = f"#{body.cdproduto}"
@@ -297,6 +319,18 @@ def registrar_bipagem(
             motivo=alerta, device_id=body.device_id, session_id=body.session_id,
         )
 
+    # Registra scan_id para idempotência futura (ex: retry via lote)
+    if body.scan_id:
+        try:
+            with get_connection() as con:
+                cur = con.cursor()
+                cur.execute(
+                    "INSERT INTO SCANS_PROCESSADOS (SCAN_ID, SESSION_ID, CDPRODUTO) VALUES (?, ?, ?)",
+                    (body.scan_id, body.session_id, body.cdproduto),
+                )
+        except Exception:
+            pass
+
     return BipagemResponse(
         cdproduto=body.cdproduto,
         cddeposito=body.cddeposito,
@@ -349,24 +383,70 @@ def sincronizar_lote(
     with get_connection() as con:
         cur = con.cursor()
         for item in body.bipagens:
+            # Idempotência por scan_id: desconta scans já processados individualmente (ex: timeout de rede)
+            net_qtde = item.qtde
+            novos_scan_ids: list[str] = []
+            if item.scan_ids:
+                placeholders = ",".join(["?"] * len(item.scan_ids))
+                try:
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM SCANS_PROCESSADOS WHERE SCAN_ID IN ({placeholders})",
+                        tuple(item.scan_ids),
+                    )
+                    ja_processados = cur.fetchone()[0] or 0
+                    net_qtde = max(0.0, item.qtde - float(ja_processados))
+                    # Scan_ids que são realmente novos (não estão em SCANS_PROCESSADOS)
+                    cur.execute(
+                        f"SELECT SCAN_ID FROM SCANS_PROCESSADOS WHERE SCAN_ID IN ({placeholders})",
+                        tuple(item.scan_ids),
+                    )
+                    ja_ids = {r[0] for r in cur.fetchall()}
+                    novos_scan_ids = [s for s in item.scan_ids if s not in ja_ids]
+                except Exception as e:
+                    print(f"[lote] scan_id dedup: {e}")
+                    novos_scan_ids = list(item.scan_ids)
+
+            if net_qtde <= 0:
+                sincronizados += 1
+                # Registra novos scan_ids mesmo sem atualizar INVENTARIO_TEMP
+                for sid in novos_scan_ids:
+                    try:
+                        cur.execute(
+                            "INSERT INTO SCANS_PROCESSADOS (SCAN_ID, SESSION_ID, CDPRODUTO) VALUES (?, ?, ?)",
+                            (sid, body.session_id, item.cdproduto),
+                        )
+                    except Exception:
+                        pass
+                continue
+
             cur.execute(
                 "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
                 "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ? RETURNING QTDE",
-                (item.qtde, item.operador, item.cdproduto, body.cddeposito, body.session_id),
+                (net_qtde, item.operador, item.cdproduto, body.cddeposito, body.session_id),
             )
             row = cur.fetchone()
             if row:
                 nova_qtde = float(row[0])
             else:
-                nova_qtde = item.qtde
+                nova_qtde = net_qtde
                 cur.execute(
                     "INSERT INTO INVENTARIO_TEMP "
                     "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, SESSION_ID, ORIGEM) "
                     "VALUES (?, ?, ?, ?, ?, ?, 'INVEC')",
-                    (item.cdproduto, body.cddeposito, item.qtde, item.operador,
+                    (item.cdproduto, body.cddeposito, net_qtde, item.operador,
                      item.qtde_sistema, body.session_id),
                 )
             sincronizados += 1
+
+            # Registra novos scan_ids para idempotência futura
+            for sid in novos_scan_ids:
+                try:
+                    cur.execute(
+                        "INSERT INTO SCANS_PROCESSADOS (SCAN_ID, SESSION_ID, CDPRODUTO) VALUES (?, ?, ?)",
+                        (sid, body.session_id, item.cdproduto),
+                    )
+                except Exception:
+                    pass
 
             if item.qtde_sistema >= ALERTA_MINIMO and nova_qtde > item.qtde_sistema * ALERTA_MULTIPLO:
                 msg = (

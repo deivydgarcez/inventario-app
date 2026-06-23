@@ -419,6 +419,9 @@ class ScannerActivity : TimeoutActivity() {
             val qtdeSistema = db.bipag.getQtdeSistema(produto.cdproduto, sessionId)
                 ?: (produto.qtdeatual ?: 0.0)
 
+            // UUID único por scan — permite idempotência no servidor caso timeout de rede gere retry via lote
+            val scanId = java.util.UUID.randomUUID().toString()
+
             // 1. Salvar em Room imediatamente (funciona offline)
             val rowId = db.bipag.insert(BipagPendente(
                 sessionId   = sessionId,
@@ -430,6 +433,7 @@ class ScannerActivity : TimeoutActivity() {
                 operador    = session.getOperador(),
                 deviceId    = session.getDeviceId(),
                 qtdeSistema = qtdeSistema,
+                scanId      = scanId,
             ))
 
             // 2. Quantidade acumulada calculada localmente
@@ -450,6 +454,7 @@ class ScannerActivity : TimeoutActivity() {
                         operador   = session.getOperador(),
                         deviceId   = session.getDeviceId(),
                         sessionId  = sessionId,
+                        scanId     = scanId,
                     ))
                     if (resp.isSuccessful) {
                         db.bipag.marcarSincronizado(rowId)

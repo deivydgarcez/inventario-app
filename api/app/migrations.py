@@ -55,6 +55,7 @@ def run_migrations():
     )
     _migrar_indice_log_tipo()
     _migrar_lotes_processados()
+    _migrar_scans_processados()
     _migrar_usuario_deposito()
     _migrar_log_data_hora_timestamp()
     _limpar_log_geral()
@@ -265,6 +266,32 @@ def _migrar_lotes_processados():
                 )
     except Exception as e:
         print(f"[migration] LOTES_SYNC_PROCESSADOS: {e}")
+
+
+def _migrar_scans_processados():
+    """Tabela de idempotência por scan individual — evita duplicata quando scan online sofre timeout."""
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = 'SCANS_PROCESSADOS'"
+            )
+            if cur.fetchone()[0] == 0:
+                cur.execute(
+                    """
+                    CREATE TABLE SCANS_PROCESSADOS (
+                        SCAN_ID    VARCHAR(36)  NOT NULL PRIMARY KEY,
+                        SESSION_ID VARCHAR(36),
+                        CDPRODUTO  INTEGER,
+                        DATA_HORA  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP NOT NULL
+                    )
+                    """
+                )
+                cur.execute(
+                    "CREATE INDEX IDX_SCANS_SESSION ON SCANS_PROCESSADOS (SESSION_ID)"
+                )
+    except Exception as e:
+        print(f"[migration] SCANS_PROCESSADOS: {e}")
 
 
 def _migrar_usuario_deposito():

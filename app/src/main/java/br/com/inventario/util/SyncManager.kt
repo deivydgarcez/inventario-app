@@ -52,6 +52,7 @@ object SyncManager {
                     .map { (cdproduto, scans) ->
                         val qtdeSistema = db.bipag.getQtdeSistema(cdproduto, sid)
                             ?: scans.first().qtdeSistema
+                        val scanIds = scans.map { it.scanId }.filter { it.isNotEmpty() }
                         BipagemLoteItem(
                             cdproduto    = cdproduto,
                             produto      = scans.first().produto,
@@ -60,6 +61,7 @@ object SyncManager {
                             operador     = scans.first().operador,
                             device_id    = scans.first().deviceId,
                             timestamp    = scans.minOf { it.timestamp },
+                            scan_ids     = scanIds.ifEmpty { null },
                         )
                     }
 

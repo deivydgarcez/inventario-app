@@ -40,6 +40,7 @@ data class BipagemRequest(
     val operador: String? = null,
     @SerializedName("device_id") val deviceId: String? = null,
     @SerializedName("session_id") val sessionId: String? = null,
+    @SerializedName("scan_id") val scanId: String? = null,
 )
 
 data class BipagemResponse(
@@ -137,6 +138,7 @@ data class BipagemLoteItem(
     val operador: String? = null,
     val device_id: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
+    val scan_ids: List<String>? = null,
 )
 
 data class LoteBipagemRequest(

@@ -21,6 +21,7 @@ data class BipagPendente(
     val qtdeSistema: Double,
     val timestamp: Long = System.currentTimeMillis(),
     val sincronizado: Boolean = false,
+    val scanId: String = "",
 )
 
 data class ProdutoCache(
@@ -49,7 +50,7 @@ class InvecDatabase private constructor(context: Context) :
 
     companion object {
         private const val DB_NAME = "invec_offline.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
 
         @Volatile
         private var INSTANCE: InvecDatabase? = null
@@ -78,7 +79,8 @@ class InvecDatabase private constructor(context: Context) :
                 device_id    TEXT,
                 qtde_sistema REAL    NOT NULL DEFAULT 0,
                 timestamp    INTEGER NOT NULL,
-                sincronizado INTEGER NOT NULL DEFAULT 0
+                sincronizado INTEGER NOT NULL DEFAULT 0,
+                scan_id      TEXT    NOT NULL DEFAULT ''
             )
             """
         )
@@ -109,6 +111,9 @@ class InvecDatabase private constructor(context: Context) :
             db.execSQL("DROP TABLE IF EXISTS produtos_cache")
             criarTabelaCatalogo(db)
         }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE bipagens_pendentes ADD COLUMN scan_id TEXT NOT NULL DEFAULT ''")
+        }
     }
 }
 
@@ -129,6 +134,7 @@ class BipagPendenteDao(private val helper: InvecDatabase) {
             put("qtde_sistema", item.qtdeSistema)
             put("timestamp",    item.timestamp)
             put("sincronizado", 0)
+            put("scan_id",      item.scanId)
         }
         return helper.writableDatabase.insert("bipagens_pendentes", null, cv)
     }
@@ -250,6 +256,7 @@ class BipagPendenteDao(private val helper: InvecDatabase) {
         qtdeSistema  = getDouble(getColumnIndexOrThrow("qtde_sistema")),
         timestamp    = getLong(getColumnIndexOrThrow("timestamp")),
         sincronizado = getInt(getColumnIndexOrThrow("sincronizado")) == 1,
+        scanId       = getString(getColumnIndexOrThrow("scan_id")) ?: "",
     )
 }
 
