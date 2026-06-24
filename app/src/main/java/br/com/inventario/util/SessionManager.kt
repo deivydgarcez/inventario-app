@@ -88,6 +88,12 @@ class SessionManager(val context: Context) {
 
     fun getScanMode(): String = prefs.getString("scan_mode", "CAMERA") ?: "CAMERA"
 
+    fun saveDarkMode(enabled: Boolean) {
+        prefs.edit { putBoolean("dark_mode", enabled) }
+    }
+
+    fun isDarkMode(): Boolean = prefs.getBoolean("dark_mode", false)
+
     fun setConsolidarBloqueado(cddeposito: Int, bloqueado: Boolean) {
         prefs.edit { putBoolean("consolidar_bloqueado_$cddeposito", bloqueado) }
     }

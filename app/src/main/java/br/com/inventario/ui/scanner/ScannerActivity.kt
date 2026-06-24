@@ -2,6 +2,7 @@ package br.com.inventario.ui.scanner
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
@@ -10,6 +11,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
@@ -51,6 +53,8 @@ class ScannerActivity : TimeoutActivity() {
     private lateinit var db: InvecDatabase
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
+    private var flashLigado = false
 
     @Volatile private var processando = false
     @Volatile private var aguardandoScan = false
@@ -234,6 +238,10 @@ class ScannerActivity : TimeoutActivity() {
             }
         } else {
             aguardandoScan = false
+            if (flashLigado) {
+                flashLigado = false
+                camera?.cameraControl?.enableTorch(false)
+            }
             cameraProvider?.unbindAll()
             binding.btModeLayout.visibility = View.VISIBLE
             binding.previewView.visibility = View.GONE
@@ -263,7 +271,8 @@ class ScannerActivity : TimeoutActivity() {
                 .also { it.setAnalyzer(cameraExecutor) { img -> processarImagem(img) } }
 
             cameraProvider?.unbindAll()
-            cameraProvider?.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            camera = cameraProvider?.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            if (flashLigado) camera?.cameraControl?.enableTorch(true)
         }, ContextCompat.getMainExecutor(this))
     }
 
@@ -604,12 +613,37 @@ class ScannerActivity : TimeoutActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val flashItem = menu.findItem(br.com.inventario.R.id.action_flash)
+        flashItem?.isVisible = scanMode == ScanMode.CAMERA
+        flashItem?.icon?.setTint(if (flashLigado) Color.parseColor("#FFD700") else Color.WHITE)
+
+        val darkItem = menu.findItem(br.com.inventario.R.id.action_modo_escuro)
+        darkItem?.title = if (session.isDarkMode()) "Modo claro" else "Modo escuro"
+
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == br.com.inventario.R.id.action_sincronizar) {
-            sincronizarManual()
-            return true
+        return when (item.itemId) {
+            br.com.inventario.R.id.action_sincronizar -> { sincronizarManual(); true }
+            br.com.inventario.R.id.action_flash -> {
+                flashLigado = !flashLigado
+                camera?.cameraControl?.enableTorch(flashLigado)
+                invalidateOptionsMenu()
+                true
+            }
+            br.com.inventario.R.id.action_modo_escuro -> {
+                val novoEstado = !session.isDarkMode()
+                session.saveDarkMode(novoEstado)
+                AppCompatDelegate.setDefaultNightMode(
+                    if (novoEstado) AppCompatDelegate.MODE_NIGHT_YES
+                    else AppCompatDelegate.MODE_NIGHT_NO
+                )
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
-        return super.onOptionsItemSelected(item)
     }
 
     private fun sincronizarManual() {
@@ -625,6 +659,14 @@ class ScannerActivity : TimeoutActivity() {
                 Toast.makeText(this@ScannerActivity, "Sem conexão com o servidor", Toast.LENGTH_SHORT).show()
             }
             atualizarIndicadorConexao(ServerMonitor.isOnline.value)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (flashLigado) {
+            flashLigado = false
+            camera?.cameraControl?.enableTorch(false)
         }
     }
 

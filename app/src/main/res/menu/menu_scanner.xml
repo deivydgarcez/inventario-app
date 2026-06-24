@@ -3,8 +3,20 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_flash"
+        android:title="Flash"
+        android:icon="@drawable/ic_flash_on"
+        app:showAsAction="ifRoom"
+        android:visible="false" />
+
+    <item
         android:id="@+id/action_sincronizar"
         android:title="Sincronizar agora"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_modo_escuro"
+        android:title="Modo escuro"
         app:showAsAction="never" />
 
 </menu>
