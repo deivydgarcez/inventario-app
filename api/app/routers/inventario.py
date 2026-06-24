@@ -322,15 +322,18 @@ def registrar_bipagem(
 
         if body.session_id:
             cur.execute(
-                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
-                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ? RETURNING QTDE",
-                (body.qtde, body.operador, body.cdproduto, body.cddeposito, body.session_id),
+                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ?, SESSION_ID = ?, "
+                "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
+                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
+                (body.qtde, body.operador, body.session_id, qtde_sistema,
+                 body.cdproduto, body.cddeposito),
             )
         else:
             cur.execute(
-                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
-                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID IS NULL RETURNING QTDE",
-                (body.qtde, body.operador, body.cdproduto, body.cddeposito),
+                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ?, "
+                "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
+                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
+                (body.qtde, body.operador, qtde_sistema, body.cdproduto, body.cddeposito),
             )
         row = cur.fetchone()
         if row:
@@ -498,9 +501,11 @@ def sincronizar_lote(
                 continue
 
             cur.execute(
-                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
-                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ? RETURNING QTDE",
-                (net_qtde, item.operador, item.cdproduto, body.cddeposito, body.session_id),
+                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ?, SESSION_ID = ?, "
+                "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
+                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
+                (net_qtde, item.operador, body.session_id, item.qtde_sistema,
+                 item.cdproduto, body.cddeposito),
             )
             row = cur.fetchone()
             if row:
