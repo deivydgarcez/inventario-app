@@ -337,23 +337,16 @@ class ScannerActivity : TimeoutActivity() {
     private suspend fun verificarCatalogo(): Boolean {
         val cddeposito = session.getCdDeposito()
         val total = withContext(Dispatchers.IO) { db.catalogo.count(cddeposito) }
-        val completo = session.isCatalogoCompleto(cddeposito)
         val offline = !ServerMonitor.isOnline.value
 
-        val bloqueado = offline && (total == 0 || !completo)
+        val bloqueado = offline && total == 0
         if (bloqueado) {
             binding.layoutAvisoCatalogo.visibility = View.VISIBLE
             binding.btnEscanear.isEnabled = false
             binding.btnDigitarCodigo.isEnabled = false
-            if (total == 0) {
-                binding.tvAvisoTitulo.text = "Catálogo não baixado!"
-                binding.tvAvisoMensagem.text =
-                    "Volte para a tela anterior, conecte ao servidor e selecione o depósito novamente para baixar o catálogo."
-            } else {
-                binding.tvAvisoTitulo.text = "Catálogo incompleto!"
-                binding.tvAvisoMensagem.text =
-                    "O catálogo foi interrompido antes de terminar ($total produtos baixados).\n\nVolte, conecte ao servidor e selecione o depósito novamente para completar o download."
-            }
+            binding.tvAvisoTitulo.text = "Catálogo não baixado!"
+            binding.tvAvisoMensagem.text =
+                "Volte para a tela anterior, conecte ao servidor e selecione o depósito novamente para baixar o catálogo."
         } else {
             binding.layoutAvisoCatalogo.visibility = View.GONE
             binding.btnEscanear.isEnabled = true
@@ -416,8 +409,7 @@ class ScannerActivity : TimeoutActivity() {
                 registrarBipagem(produto, sessionId)
             } else {
                 val totalCache = db.catalogo.count(cddeposito)
-                val catalogoIncompleto = !session.isCatalogoCompleto(cddeposito)
-                if (erroRede && (totalCache == 0 || catalogoIncompleto)) {
+                if (erroRede && totalCache == 0) {
                     lifecycleScope.launch { verificarCatalogo() }
                 } else {
                     mostrarErro("Produto não cadastrado no sistema")
