@@ -13,6 +13,9 @@ local.properties
 *.keystore
 *.jks
 
+# Java heap dumps
+*.hprof
+
 # IDE
 .idea/
 *.iml

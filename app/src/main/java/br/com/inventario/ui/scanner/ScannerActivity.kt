@@ -469,6 +469,11 @@ class ScannerActivity : TimeoutActivity() {
                     db.bipag.marcarSincronizado(rowId)
                     val alerta = resp.body()?.alerta
                     if (!alerta.isNullOrBlank()) mostrarAlertaQuantidade(produto.produto, alerta)
+                } else {
+                    val detail = try {
+                        org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
+                    } catch (_: Exception) { "HTTP ${resp.code()}" }
+                    mostrarErro("Bipagem não salva no servidor: $detail")
                 }
             } catch (_: Exception) {
                 // UX-2: atualiza status de conexão imediatamente sem aguardar o ciclo de 30s
@@ -492,7 +497,7 @@ class ScannerActivity : TimeoutActivity() {
         binding.lastScanPanel.visibility = View.VISIBLE
         binding.tvLastScanNome.text = "✓ $nome"
         binding.tvLastScanQtd.text = "Total neste produto: ${"%.0f".format(qtd)} un."
-        binding.tvScanCounter.text = "$totalBipagens bipagens"
+        binding.tvScanCounter.text = "$totalBipagens un. contadas"
         binding.tvStatus.visibility = View.GONE
         if (binding.switchMultiplo.isChecked && scanMode == ScanMode.CAMERA) {
             lifecycleScope.launch {
@@ -561,7 +566,21 @@ class ScannerActivity : TimeoutActivity() {
                                 }
                             }
                         } else {
-                            mostrarErro("Erro ao atualizar quantidade")
+                            val detail = try {
+                                org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
+                            } catch (_: Exception) { "HTTP ${resp.code()}" }
+                            if (resp.code() == 404) {
+                                val sid = session.getSessionId()
+                                val pendentes = if (sid != null)
+                                    withContext(Dispatchers.IO) { db.bipag.countPendentes(sid) }
+                                else 0
+                                if (pendentes > 0)
+                                    mostrarErro("Itens pendentes de sync. Aguarde e tente novamente.")
+                                else
+                                    mostrarErro("Erro ao atualizar: $detail")
+                            } else {
+                                mostrarErro("Erro ao atualizar: $detail")
+                            }
                         }
                     } catch (e: Exception) {
                         mostrarErro("Erro: ${e.message}")
@@ -619,7 +638,7 @@ class ScannerActivity : TimeoutActivity() {
                 db.bipag.getRelatorioOffline(sid, session.getCdDeposito()).sumOf { it.qtdeContada }.toInt()
             }
             totalBipagens = total
-            if (total > 0) binding.tvScanCounter.text = "$total bipagens"
+            if (total > 0) binding.tvScanCounter.text = "$total un. contadas"
         }
 
         // UX-3: recarrega mini-lista ao retornar (pode ter sido alterada em RelatorioActivity)

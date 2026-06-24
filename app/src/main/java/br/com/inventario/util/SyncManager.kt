@@ -70,8 +70,12 @@ object SyncManager {
                     val resp = api.sincronizarLote(LoteBipagemRequest(sid, cddeposito, lote, loteId))
                     if (resp.isSuccessful) {
                         db.bipag.marcarSincronizados(items.map { it.id })
+                    } else if (resp.code() == 409) {
+                        // Sessão já consolidada/encerrada — esses registros nunca serão aceitos.
+                        // Marcamos como sincronizados para não acumular lixo no banco local.
+                        db.bipag.marcarSincronizados(items.map { it.id })
                     }
-                    // else: 4xx/5xx → deixa pendente para o próximo ciclo
+                    // else: outro erro → deixa pendente para o próximo ciclo
                 } catch (_: Exception) {
                     // erro de rede → deixa pendente para o próximo ciclo
                 }

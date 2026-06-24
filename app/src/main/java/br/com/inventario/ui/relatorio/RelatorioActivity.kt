@@ -165,7 +165,11 @@ class RelatorioActivity : TimeoutActivity() {
                             confirmarConsolidar()
                         }
                     } else {
-                        Toast.makeText(this@RelatorioActivity, "Erro ao carregar relatório", Toast.LENGTH_SHORT).show()
+                        val errBody = try { respRelatorio.errorBody()?.string() ?: "" } catch (_: Exception) { "" }
+                        val detail = try {
+                            org.json.JSONObject(errBody).getString("detail")
+                        } catch (_: Exception) { "HTTP ${respRelatorio.code()}" }
+                        Toast.makeText(this@RelatorioActivity, "Erro ao carregar relatório: $detail", Toast.LENGTH_LONG).show()
                     }
 
                     val resumo = respResumo.body()
@@ -345,7 +349,11 @@ class RelatorioActivity : TimeoutActivity() {
                             val currentItems = (0 until (adapter?.itemCount ?: 0)).map { adapter!!.getItem(it) }
                             atualizarResumo(currentItems, online = ServerMonitor.isOnline.value)
                         } else {
-                            Toast.makeText(this@RelatorioActivity, "Erro ao remover item", Toast.LENGTH_SHORT).show()
+                            val errBody = try { resp.errorBody()?.string() ?: "" } catch (_: Exception) { "" }
+                            val detail = try {
+                                org.json.JSONObject(errBody).getString("detail")
+                            } catch (_: Exception) { "HTTP ${resp.code()}" }
+                            Toast.makeText(this@RelatorioActivity, "Erro ao remover: $detail", Toast.LENGTH_LONG).show()
                             carregarRelatorio()
                         }
                     } catch (e: Exception) {
@@ -397,7 +405,7 @@ class RelatorioActivity : TimeoutActivity() {
 
         btnConsolidarNow.setOnClickListener {
             dialog?.dismiss()
-            if (divergencias > 0) pedirSupervisor() else consolidar(null, null)
+            if (divergencias > 0 && !session.isMI()) pedirSupervisor() else consolidar(null, null)
         }
         view.findViewById<MaterialButton>(R.id.btnCancelarConsolidar).setOnClickListener { dialog?.dismiss() }
 

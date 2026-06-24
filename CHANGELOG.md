@@ -1,5 +1,34 @@
 # CHANGELOG — Invec
 
+## [1.3.1] — 2026-06-24
+
+### Correções de bugs
+
+#### Backend — `api/app/routers/inventario.py`
+
+- **Bug crítico: estoque zero ignorado em `/consolidar`** — `qtdeatual_snap = 0.0` era tratado como `None` pelo operador `or` do Python. Produtos com estoque zero no sistema no momento do scan usavam o estoque atual como baseline, gerando movimentações incorretas no `MOV_PRODUTO`. Corrigido com `float(snap) if snap is not None else float(movimento_qtde.get(...))`.
+- **Sincronizado com `inventario-api` v1.3.1**: inclui correções de segurança de MI bypass em `_verificar_acesso_deposito`, auto-criação de sessão em `/bipagem`, e rate limiting em supervisor.
+
+#### Android — `ScannerActivity.kt`
+
+- **Contador consistente**: label do contador mudou de `"X bipagens"` para `"X un. contadas"` — o valor representa total de unidades na sessão, não eventos de scan; agora consistente entre scan e retorno de outra tela.
+- **Erro 404 na edição com sync pendente**: quando a edição falha com 404 e há itens ainda não sincronizados no Room, exibe `"Itens pendentes de sync. Aguarde e tente novamente."` em vez do genérico `"Item não encontrado na contagem"`.
+
+#### Android — `RelatorioActivity.kt`
+
+- **Erro HTTP com detalhe real**: ao falhar carregamento ou remoção de item, o erro exibido agora inclui o `detail` da resposta JSON do servidor em vez de mensagem genérica.
+
+#### Android — `SyncManager.kt`
+
+- **409 encerra acumulação de lixo**: lote rejeitado com 409 (sessão já consolidada) agora marca todos os itens da sessão como sincronizados no Room, evitando tentativas infinitas de re-envio.
+
+#### Outros
+
+- **`.gitignore`**: `*.hprof` adicionado (exclui heap dumps do Java/Android)
+- **APK renomeado**: `invec-app.apk` → `app-release.apk` (nome padrão do Gradle)
+
+---
+
 ## [1.3.0] — 2026-06-23
 
 ### Segurança, integridade offline e correções do instalador

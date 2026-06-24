@@ -118,8 +118,10 @@ def _salvar_relatorio(
 
 def _verificar_acesso_deposito(current_user: dict, cddeposito: int) -> None:
     """FRAUDE-3: valida que o usuário tem permissão para o depósito.
-    Admins (idgrupo=1) e gerentes (idgrupo=2) têm acesso irrestrito.
-    Operadores sem restrições cadastradas também têm acesso total (backward compat)."""
+    MI é superadmin — acesso irrestrito. Admins (idgrupo=1) e gerentes (idgrupo=2) também.
+    Operadores sem restrições cadastradas têm acesso total (backward compat)."""
+    if current_user.get("login", "").upper() == "MI":
+        return
     idgrupo = current_user.get("idgrupo") or 3
     if idgrupo in (1, 2):
         return
@@ -214,8 +216,12 @@ def supervisor_pre_auth(
     _sup_tentativas.pop(chave, None)
     _sup_bloqueados.pop(chave, None)
 
-    if (sup.get("idgrupo") or 3) not in (1, 2):
+    is_mi_sup = sup.get("login", "").upper() == "MI"
+    if not is_mi_sup and (sup.get("idgrupo") or 3) not in (1, 2):
         raise HTTPException(status_code=403, detail="Supervisor precisa ser gerente ou administrador")
+
+    # MI é sempre tratado como admin (idgrupo=1) mesmo que o banco Automec tenha outro grupo
+    idgrupo_efetivo = 1 if is_mi_sup else (sup.get("idgrupo") or 3)
 
     token = secrets.token_hex(24)
     with _supervisor_tokens_lock:
@@ -225,7 +231,7 @@ def supervisor_pre_auth(
             del _supervisor_tokens[k]
         _supervisor_tokens[token] = {
             "login": sup["login"],
-            "idgrupo": sup.get("idgrupo") or 3,
+            "idgrupo": idgrupo_efetivo,
             "expires": time.time() + _SUPERVISOR_TOKEN_TTL,
         }
 
@@ -263,6 +269,35 @@ def registrar_bipagem(
                     )
         except Exception as e:
             print(f"[scan] idempotência check: {e}")
+
+    # Verifica status da sessão e cria registro se não existir
+    # (compatibilidade: usuário pode ter selecionado depósito offline e voltou a escanear online)
+    if body.session_id:
+        try:
+            with get_connection() as con:
+                cur = con.cursor()
+                cur.execute(
+                    "SELECT STATUS FROM INVENTARIO_SESSAO WHERE SESSION_ID = ?",
+                    (body.session_id,),
+                )
+                row_s = cur.fetchone()
+                if row_s:
+                    st = (row_s[0] or "").upper()
+                    if st in ("CONSOLIDADA", "ENCERRADA"):
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Sessão já foi {st.lower()} — nova bipagem rejeitada",
+                        )
+                else:
+                    cur.execute(
+                        "INSERT INTO INVENTARIO_SESSAO (SESSION_ID, CDDEPOSITO, USUARIO, STATUS) "
+                        "VALUES (?, ?, ?, 'ABERTA')",
+                        (body.session_id, body.cddeposito, current_user.get("login", "")),
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[bipagem] sessao init: {e}")
 
     nova_qtde = 0.0
     mensagem = ""
@@ -810,7 +845,8 @@ def consolidar_inventario(
             divergencias = 0
             for item in itens:
                 # PERF-2: usa mapa pré-buscado em vez de subquery por item
-                qtde_atual = float(item.get("qtdeatual_snap") or movimento_qtde.get(item["cdproduto_str"], 0))
+                _snap = item.get("qtdeatual_snap")
+                qtde_atual = float(_snap) if _snap is not None else float(movimento_qtde.get(item["cdproduto_str"], 0))
                 qtdeentrega = qtde_entrega_map.get(item["cdproduto"], 0.0)
                 baseline = qtde_atual + qtdeentrega
                 if abs(float(item["qtde_contada"] or 0) - baseline) > 0.001:
@@ -839,16 +875,22 @@ def consolidar_inventario(
                 if teve_edicoes and divergencias == 0:
                     motivo_supervisor = "Houve edições de quantidade nesta sessão."
 
+                # MI é superadmin — auto-autoriza sem precisar de outro supervisor
+                is_mi_user = current_user.get("login", "").upper() == "MI"
+                if is_mi_user:
+                    supervisor_login_validado = current_user.get("login")
                 # SEC-2: aceita supervisor_token (pré-autenticado) ou supervisor_senha (legado)
-                if body.supervisor_token:
+                elif body.supervisor_token:
                     token_data = _validar_supervisor_token(body.supervisor_token)
                     supervisor_login_validado = token_data["login"]
-                    if token_data["idgrupo"] not in (1, 2):
+                    is_mi_sup = token_data.get("login", "").upper() == "MI"
+                    if not is_mi_sup and token_data["idgrupo"] not in (1, 2):
                         raise HTTPException(
                             status_code=403,
                             detail="Supervisor precisa ser gerente ou administrador",
                         )
-                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3
+                    is_mi_user = current_user.get("login", "").upper() == "MI"
+                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3 and not is_mi_user
                     if supervisor_login_validado.lower() == current_user.get("login", "").lower() and quem_consolida_operador:
                         raise HTTPException(
                             status_code=400,
@@ -871,12 +913,14 @@ def consolidar_inventario(
                         )
                     if senha_mobile != body.supervisor_senha:
                         raise HTTPException(status_code=401, detail="Credenciais do supervisor inválidas")
-                    if (supervisor.get("idgrupo") or 3) not in (1, 2):
+                    is_mi_sup = supervisor.get("login", "").upper() == "MI"
+                    if not is_mi_sup and (supervisor.get("idgrupo") or 3) not in (1, 2):
                         raise HTTPException(
                             status_code=403,
                             detail="Supervisor precisa ser gerente ou administrador",
                         )
-                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3
+                    is_mi_user = current_user.get("login", "").upper() == "MI"
+                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3 and not is_mi_user
                     mesmo_usuario = supervisor["login"].lower() == current_user.get("login", "").lower()
                     if mesmo_usuario and quem_consolida_operador:
                         raise HTTPException(
@@ -901,7 +945,8 @@ def consolidar_inventario(
                 cdproduto_str = item["cdproduto_str"]
                 qtde_contada  = float(item["qtde_contada"] or 0)
                 # PERF-2: usa mapa pré-buscado
-                qtde_atual    = float(item.get("qtdeatual_snap") or movimento_qtde.get(cdproduto_str, 0))
+                _snap = item.get("qtdeatual_snap")
+                qtde_atual    = float(_snap) if _snap is not None else float(movimento_qtde.get(cdproduto_str, 0))
                 fatorconv     = float(item["fatorconv"] or 1)
                 vlcusto       = float(item["vlcusto"] or 0)
                 cdunidade     = item["cdunidade"]
@@ -1217,10 +1262,11 @@ def log_auditoria(
     limit: int = Query(default=200, le=500),
     current_user: dict = Depends(get_current_user),
 ):
-    # fallback para tokens antigos que não têm idgrupo — deriva do campo role
+    # MI é superadmin — acesso total ao log. Para os demais, exige gerente ou admin.
+    is_mi = current_user.get("login", "").upper() == "MI"
     _role = current_user.get("role", "operador")
     idgrupo = current_user.get("idgrupo") or (1 if _role == "admin" else 2 if _role == "gerente" else 3)
-    if idgrupo not in (1, 2):
+    if not is_mi and idgrupo not in (1, 2):
         raise HTTPException(status_code=403, detail="Apenas gerentes e administradores podem acessar o log")
     try:
         with get_connection() as con:
