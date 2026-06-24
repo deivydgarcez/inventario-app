@@ -183,6 +183,12 @@ class RelatorioActivity : TimeoutActivity() {
                     }
                 } catch (e: Exception) {
                     Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+                    // Mesmo com falha de rede, habilita Consolidar se já há itens no adapter
+                    val currentAdapter = adapter
+                    if (currentAdapter != null) {
+                        val items = (0 until currentAdapter.itemCount).map { currentAdapter.getItem(it) }
+                        atualizarResumo(items, online = true)
+                    }
                 }
             } else {
                 // Modo offline: constrói relatório a partir do Room

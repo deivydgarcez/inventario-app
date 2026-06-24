@@ -132,7 +132,7 @@ class ScannerActivity : TimeoutActivity() {
             }
         }
 
-        verificarCatalogo()
+        lifecycleScope.launch { verificarCatalogo() }
 
         // Monitor de conectividade
         ServerMonitor.startOrKeep(session, lifecycleScope)
@@ -140,8 +140,10 @@ class ScannerActivity : TimeoutActivity() {
 
         lifecycleScope.launch {
             ServerMonitor.isOnline.collect { online ->
-                atualizarIndicadorConexao(online)
-                verificarCatalogo()
+                try {
+                    atualizarIndicadorConexao(online)
+                    verificarCatalogo()
+                } catch (_: Exception) { }
             }
         }
     }
@@ -332,9 +334,9 @@ class ScannerActivity : TimeoutActivity() {
         return super.dispatchKeyEvent(event)
     }
 
-    private fun verificarCatalogo(): Boolean {
+    private suspend fun verificarCatalogo(): Boolean {
         val cddeposito = session.getCdDeposito()
-        val total = db.catalogo.count(cddeposito)
+        val total = withContext(Dispatchers.IO) { db.catalogo.count(cddeposito) }
         val completo = session.isCatalogoCompleto(cddeposito)
         val offline = !ServerMonitor.isOnline.value
 
@@ -416,7 +418,7 @@ class ScannerActivity : TimeoutActivity() {
                 val totalCache = db.catalogo.count(cddeposito)
                 val catalogoIncompleto = !session.isCatalogoCompleto(cddeposito)
                 if (erroRede && (totalCache == 0 || catalogoIncompleto)) {
-                    runOnUiThread { verificarCatalogo() }
+                    lifecycleScope.launch { verificarCatalogo() }
                 } else {
                     mostrarErro("Produto não cadastrado no sistema")
                 }

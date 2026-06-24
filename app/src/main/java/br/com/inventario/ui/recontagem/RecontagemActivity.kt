@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import br.com.inventario.ui.base.TimeoutActivity
 import androidx.camera.core.*
+import androidx.camera.core.Camera
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -52,6 +53,8 @@ class RecontagemActivity : TimeoutActivity() {
 
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
+    private var flashLigado = false
 
     private val btBuffer = StringBuilder()
     private var btLastKeyTime = 0L
@@ -122,6 +125,7 @@ class RecontagemActivity : TimeoutActivity() {
             binding.cameraContainer.visibility = View.VISIBLE
             binding.btnEscanear.visibility = View.VISIBLE
             binding.switchRow.visibility = View.VISIBLE
+            binding.btnFlash.visibility = View.VISIBLE
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 == PackageManager.PERMISSION_GRANTED
             ) {
@@ -130,11 +134,15 @@ class RecontagemActivity : TimeoutActivity() {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 101)
             }
         } else {
+            camera?.cameraControl?.enableTorch(false)
+            flashLigado = false
             aguardandoScan = false
             cameraProvider?.unbindAll()
+            camera = null
             binding.cameraContainer.visibility = View.GONE
             binding.btnEscanear.visibility = View.GONE
             binding.switchRow.visibility = View.GONE
+            binding.btnFlash.visibility = View.GONE
             binding.btnModo.text = "BT"
             btBuffer.clear()
             resetarBotaoEscanear()
@@ -176,8 +184,25 @@ class RecontagemActivity : TimeoutActivity() {
                 .also { it.setAnalyzer(cameraExecutor) { img -> processarImagem(img) } }
 
             cameraProvider?.unbindAll()
-            cameraProvider?.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            camera = cameraProvider?.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            if (flashLigado) camera?.cameraControl?.enableTorch(true)
+
+            binding.btnFlash.setOnClickListener {
+                flashLigado = !flashLigado
+                camera?.cameraControl?.enableTorch(flashLigado)
+                binding.btnFlash.setColorFilter(
+                    if (flashLigado) 0xFFFFD700.toInt() else android.graphics.Color.WHITE,
+                    android.graphics.PorterDuff.Mode.SRC_IN
+                )
+            }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    override fun onPause() {
+        super.onPause()
+        camera?.cameraControl?.enableTorch(false)
+        flashLigado = false
+        binding.btnFlash.setColorFilter(android.graphics.Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
     }
 
     @androidx.annotation.OptIn(ExperimentalGetImage::class)

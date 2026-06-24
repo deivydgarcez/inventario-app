@@ -34,6 +34,18 @@
             android:layout_height="match_parent"
             android:background="#33000000" />
 
+        <ImageButton
+            android:id="@+id/btnFlash"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="8dp"
+            android:background="#66000000"
+            android:src="@drawable/ic_flash_on"
+            android:padding="6dp"
+            android:contentDescription="Flash"
+            android:visibility="gone" />
+
         <View
             android:id="@+id/scanFrame"
             android:layout_width="240dp"

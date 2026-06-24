@@ -24,7 +24,7 @@ object ServerMonitor {
                     api.ping().isSuccessful
                 } catch (_: Exception) { false }
                 _isOnline.value = ok
-                delay(30_000)
+                delay(8_000)
             }
         }
     }
