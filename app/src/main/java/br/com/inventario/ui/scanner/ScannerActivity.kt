@@ -11,7 +11,6 @@ import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
@@ -617,10 +616,6 @@ class ScannerActivity : TimeoutActivity() {
         val flashItem = menu.findItem(br.com.inventario.R.id.action_flash)
         flashItem?.isVisible = scanMode == ScanMode.CAMERA
         flashItem?.icon?.setTint(if (flashLigado) Color.parseColor("#FFD700") else Color.WHITE)
-
-        val darkItem = menu.findItem(br.com.inventario.R.id.action_modo_escuro)
-        darkItem?.title = if (session.isDarkMode()) "Modo claro" else "Modo escuro"
-
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -631,15 +626,6 @@ class ScannerActivity : TimeoutActivity() {
                 flashLigado = !flashLigado
                 camera?.cameraControl?.enableTorch(flashLigado)
                 invalidateOptionsMenu()
-                true
-            }
-            br.com.inventario.R.id.action_modo_escuro -> {
-                val novoEstado = !session.isDarkMode()
-                session.saveDarkMode(novoEstado)
-                AppCompatDelegate.setDefaultNightMode(
-                    if (novoEstado) AppCompatDelegate.MODE_NIGHT_YES
-                    else AppCompatDelegate.MODE_NIGHT_NO
-                )
                 true
             }
             else -> super.onOptionsItemSelected(item)

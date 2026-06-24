@@ -14,9 +14,4 @@
         android:title="Sincronizar agora"
         app:showAsAction="never" />
 
-    <item
-        android:id="@+id/action_modo_escuro"
-        android:title="Modo escuro"
-        app:showAsAction="never" />
-
 </menu>

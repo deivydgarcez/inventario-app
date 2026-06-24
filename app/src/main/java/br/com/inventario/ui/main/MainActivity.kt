@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.lifecycle.lifecycleScope
 import br.com.inventario.data.api.RetrofitClient
 import br.com.inventario.data.db.InvecDatabase
@@ -40,6 +41,14 @@ class MainActivity : TimeoutActivity() {
         ServerMonitor.startOrKeep(session, lifecycleScope)
 
         atualizarHeader()
+
+        binding.switchModoEscuro.isChecked = session.isDarkMode()
+        binding.switchModoEscuro.setOnCheckedChangeListener { _, checked ->
+            session.saveDarkMode(checked)
+            AppCompatDelegate.setDefaultNightMode(
+                if (checked) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+            )
+        }
 
         binding.btnSelecionarDeposito.setOnClickListener { carregarDepositos() }
         binding.btnBipar.setOnClickListener { abrirScanner() }
