@@ -527,29 +527,41 @@ class RelatorioActivity : TimeoutActivity() {
     }
 
     private fun editarItemComAuditoria(item: ItemRelatorio, position: Int, novaQtde: Double, motivo: String) {
+        val sid = session.getSessionId() ?: return
         lifecycleScope.launch {
-            try {
-                val api = RetrofitClient.build(session)
-                val resp = api.editarBipagem(item.cdproduto, EditarBipagemRequest(
-                    qtde       = novaQtde,
-                    cddeposito = session.getCdDeposito(),
-                    motivo     = motivo,
-                    deviceId   = session.getDeviceId(),
-                    sessionId  = session.getSessionId(),
-                ))
-                if (resp.isSuccessful) {
-                    adapter?.updateItem(position, novaQtde)
-                    Toast.makeText(this@RelatorioActivity, "Quantidade atualizada", Toast.LENGTH_SHORT).show()
-                    val currentItems = (0 until (adapter?.itemCount ?: 0)).map { adapter!!.getItem(it) }
-                    atualizarResumo(currentItems, online = true)
-                } else {
-                    val detail = try {
-                        org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
-                    } catch (_: Exception) { "Erro ao atualizar quantidade" }
-                    Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
+            if (ServerMonitor.isOnline.value) {
+                try {
+                    val api = RetrofitClient.build(session)
+                    val resp = api.editarBipagem(item.cdproduto, EditarBipagemRequest(
+                        qtde       = novaQtde,
+                        cddeposito = session.getCdDeposito(),
+                        motivo     = motivo,
+                        deviceId   = session.getDeviceId(),
+                        sessionId  = sid,
+                    ))
+                    if (resp.isSuccessful) {
+                        adapter?.updateItem(position, novaQtde)
+                        Toast.makeText(this@RelatorioActivity, "Quantidade atualizada", Toast.LENGTH_SHORT).show()
+                        val currentItems = (0 until (adapter?.itemCount ?: 0)).map { adapter!!.getItem(it) }
+                        atualizarResumo(currentItems, online = true)
+                    } else {
+                        val detail = try {
+                            org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
+                        } catch (_: Exception) { "Erro ao atualizar quantidade" }
+                        Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+            } else {
+                // Offline: salva delta no Room; sincronizado ao reconectar via lote
+                withContext(Dispatchers.IO) {
+                    db.bipag.atualizarQtdeProduto(item.cdproduto, sid, novaQtde, offline = true)
+                }
+                adapter?.updateItem(position, novaQtde)
+                val currentItems = (0 until (adapter?.itemCount ?: 0)).map { adapter!!.getItem(it) }
+                atualizarResumo(currentItems, online = false)
+                Toast.makeText(this@RelatorioActivity, "Salvo offline — será sincronizado ao reconectar", Toast.LENGTH_SHORT).show()
             }
         }
     }

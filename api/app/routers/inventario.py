@@ -506,7 +506,7 @@ def sincronizar_lote(
                     print(f"[lote] scan_id dedup: {e}")
                     novos_scan_ids = list(item.scan_ids)
 
-            if net_qtde <= 0:
+            if net_qtde == 0:
                 sincronizados += 1
                 # Registra novos scan_ids mesmo sem atualizar INVENTARIO_TEMP
                 for sid in novos_scan_ids:

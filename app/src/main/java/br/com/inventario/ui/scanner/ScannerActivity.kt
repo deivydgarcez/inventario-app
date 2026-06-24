@@ -368,40 +368,46 @@ class ScannerActivity : TimeoutActivity() {
             var produto: Produto? = null
             var erroRede: Boolean = false
 
-            // Tenta rede primeiro
-            try {
-                val api = RetrofitClient.build(session)
-                val response = api.buscarPorBarcode(codigo, cddeposito)
-                when {
-                    response.isSuccessful -> {
-                        produto = response.body()!!
-                        // Atualiza cache local se tiver código de barras
-                        val barcode = produto.codigobarra
-                        if (!barcode.isNullOrBlank()) {
-                            db.catalogo.upsertBatch(listOf(ProdutoCache(
-                                codigobarra = barcode,
-                                cddeposito  = cddeposito,
-                                cdproduto   = produto.cdproduto,
-                                produto     = produto.produto,
-                                qtdeatual   = produto.qtdeatual ?: 0.0,
-                            )))
+            if (ServerMonitor.isOnline.value) {
+                // Online: tenta servidor (conectTimeout agora 5s)
+                try {
+                    val api = RetrofitClient.build(session)
+                    val response = api.buscarPorBarcode(codigo, cddeposito)
+                    when {
+                        response.isSuccessful -> {
+                            produto = response.body()!!
+                            val barcode = produto.codigobarra
+                            if (!barcode.isNullOrBlank()) {
+                                db.catalogo.upsertBatch(listOf(ProdutoCache(
+                                    codigobarra = barcode,
+                                    cddeposito  = cddeposito,
+                                    cdproduto   = produto.cdproduto,
+                                    produto     = produto.produto,
+                                    qtdeatual   = produto.qtdeatual ?: 0.0,
+                                )))
+                            }
                         }
+                        response.code() == 404 -> {
+                            mostrarErro("Produto não encontrado: $codigo")
+                            resetarEstado()
+                            return@launch
+                        }
+                        else -> { erroRede = true; throw Exception("HTTP ${response.code()}") }
                     }
-                    response.code() == 404 -> {
-                        mostrarErro("Produto não encontrado: $codigo")
-                        resetarEstado()
-                        return@launch
+                } catch (_: Exception) {
+                    erroRede = true
+                    val cached = withContext(Dispatchers.IO) { db.catalogo.getByBarcode(codigo, cddeposito) }
+                    if (cached != null) {
+                        produto = Produto(cached.cdproduto, cached.produto, cached.codigobarra, cached.qtdeatual)
                     }
-                    else -> { erroRede = true; throw Exception("HTTP ${response.code()}") }
                 }
-            } catch (_: Exception) {
+            } else {
+                // Offline: vai direto ao cache local (sem esperar timeout de rede)
                 erroRede = true
-                // Sem rede — busca no cache local
-                val cached = db.catalogo.getByBarcode(codigo, cddeposito)
+                val cached = withContext(Dispatchers.IO) { db.catalogo.getByBarcode(codigo, cddeposito) }
                 if (cached != null) {
                     produto = Produto(cached.cdproduto, cached.produto, cached.codigobarra, cached.qtdeatual)
                 }
-
             }
 
             if (produto != null) {
@@ -535,10 +541,6 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     private fun editarQuantidade(item: ScannedItem) {
-        if (!ServerMonitor.isOnline.value) {
-            Toast.makeText(this, "Edição requer conexão com o servidor", Toast.LENGTH_SHORT).show()
-            return
-        }
         val input = EditText(this).apply {
             hint = "Nova quantidade"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -550,48 +552,55 @@ class ScannerActivity : TimeoutActivity() {
             .setView(input)
             .setPositiveButton("Salvar") { _, _ ->
                 val novaQtde = input.text.toString().toDoubleOrNull() ?: return@setPositiveButton
+                val sid = session.getSessionId() ?: return@setPositiveButton
                 lifecycleScope.launch {
-                    try {
-                        val api = RetrofitClient.build(session)
-                        val resp = api.editarBipagem(item.cdproduto, EditarBipagemRequest(
-                            qtde       = novaQtde,
-                            cddeposito = session.getCdDeposito(),
-                            motivo     = "Edição manual no scanner",
-                            deviceId   = session.getDeviceId(),
-                            sessionId  = session.getSessionId(),
-                        ))
-                        if (resp.isSuccessful) {
-                            item.qtde = novaQtde
-                            scannedAdapter.notifyDataSetChanged()
-                            mostrarUltimoBipado(item.nome, novaQtde)
-                            session.getSessionId()?.let { sid ->
-                                // withLock garante que o SyncManager não lê registros antigos
-                                // enquanto a edição ainda não foi gravada no Room
+                    if (ServerMonitor.isOnline.value) {
+                        try {
+                            val api = RetrofitClient.build(session)
+                            val resp = api.editarBipagem(item.cdproduto, EditarBipagemRequest(
+                                qtde       = novaQtde,
+                                cddeposito = session.getCdDeposito(),
+                                motivo     = "Edição manual no scanner",
+                                deviceId   = session.getDeviceId(),
+                                sessionId  = sid,
+                            ))
+                            if (resp.isSuccessful) {
+                                item.qtde = novaQtde
+                                scannedAdapter.notifyDataSetChanged()
+                                mostrarUltimoBipado(item.nome, novaQtde)
                                 SyncManager.mutex.withLock {
                                     withContext(Dispatchers.IO) {
                                         db.bipag.atualizarQtdeProduto(item.cdproduto, sid, novaQtde)
                                     }
                                 }
-                            }
-                        } else {
-                            val detail = try {
-                                org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
-                            } catch (_: Exception) { "HTTP ${resp.code()}" }
-                            if (resp.code() == 404) {
-                                val sid = session.getSessionId()
-                                val pendentes = if (sid != null)
-                                    withContext(Dispatchers.IO) { db.bipag.countPendentes(sid) }
-                                else 0
-                                if (pendentes > 0)
-                                    mostrarErro("Itens pendentes de sync. Aguarde e tente novamente.")
-                                else
-                                    mostrarErro("Erro ao atualizar: $detail")
                             } else {
-                                mostrarErro("Erro ao atualizar: $detail")
+                                val detail = try {
+                                    org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
+                                } catch (_: Exception) { "HTTP ${resp.code()}" }
+                                if (resp.code() == 404) {
+                                    val pendentes = withContext(Dispatchers.IO) { db.bipag.countPendentes(sid) }
+                                    if (pendentes > 0)
+                                        mostrarErro("Itens pendentes de sync. Aguarde e tente novamente.")
+                                    else
+                                        mostrarErro("Erro ao atualizar: $detail")
+                                } else {
+                                    mostrarErro("Erro ao atualizar: $detail")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            mostrarErro("Erro: ${e.message}")
+                        }
+                    } else {
+                        // Offline: salva delta no Room; o lote vai corrigir o servidor ao reconectar
+                        SyncManager.mutex.withLock {
+                            withContext(Dispatchers.IO) {
+                                db.bipag.atualizarQtdeProduto(item.cdproduto, sid, novaQtde, offline = true)
                             }
                         }
-                    } catch (e: Exception) {
-                        mostrarErro("Erro: ${e.message}")
+                        item.qtde = novaQtde
+                        scannedAdapter.notifyDataSetChanged()
+                        mostrarUltimoBipado(item.nome, novaQtde)
+                        Toast.makeText(this@ScannerActivity, "Salvo offline — será sincronizado ao reconectar", Toast.LENGTH_SHORT).show()
                     }
                 }
             }

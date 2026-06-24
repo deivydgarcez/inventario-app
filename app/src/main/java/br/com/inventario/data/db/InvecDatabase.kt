@@ -179,7 +179,18 @@ class BipagPendenteDao(private val helper: InvecDatabase) {
         helper.writableDatabase.delete("bipagens_pendentes", "session_id=?", arrayOf(sessionId))
     }
 
-    fun atualizarQtdeProduto(cdproduto: Int, sessionId: String, novaQtde: Double) {
+    fun atualizarQtdeProduto(cdproduto: Int, sessionId: String, novaQtde: Double, offline: Boolean = false) {
+        // Offline: precisa calcular o delta = novaQtde - já_sincronizado para não dobrar no lote.
+        // Online: o servidor já recebeu a edição diretamente; apenas consolida o Room.
+        val syncedSum: Double = if (offline) {
+            helper.readableDatabase.rawQuery(
+                "SELECT COALESCE(SUM(qtde),0) FROM bipagens_pendentes WHERE cdproduto=? AND session_id=? AND sincronizado=1",
+                arrayOf(cdproduto.toString(), sessionId)
+            ).useFirst { it.getDouble(0) } ?: 0.0
+        } else 0.0
+
+        val qtdeParaArmazenar = if (offline) novaQtde - syncedSum else novaQtde
+
         val cv = helper.readableDatabase.rawQuery(
             "SELECT produto, codigobarra, cddeposito, operador, device_id, qtde_sistema " +
             "FROM bipagens_pendentes WHERE cdproduto=? AND session_id=? ORDER BY timestamp ASC LIMIT 1",
@@ -190,24 +201,34 @@ class BipagPendenteDao(private val helper: InvecDatabase) {
                 put("cdproduto",    cdproduto)
                 put("produto",      c.getString(0) ?: "")
                 val barcode = c.getString(1); if (barcode != null) put("codigobarra", barcode) else putNull("codigobarra")
-                put("qtde",         novaQtde)
+                put("qtde",         qtdeParaArmazenar)
                 put("cddeposito",   c.getInt(2))
                 val op = c.getString(3); if (op != null) put("operador", op) else putNull("operador")
                 val did = c.getString(4); if (did != null) put("device_id", did) else putNull("device_id")
                 put("qtde_sistema", c.getDouble(5))
                 put("timestamp",    System.currentTimeMillis())
-                put("sincronizado", 1)
+                put("sincronizado", if (offline) 0 else 1)
+                put("scan_id",      "")
             }
         } ?: return
+
         val db = helper.writableDatabase
         db.beginTransaction()
         try {
-            // Deleta todos os scans antigos deste produto na sessão — o novo registro consolidado
-            // substitui o histórico. Necessário para que getRelatorioOffline (que usa SUM) não some
-            // os scans velhos + a quantidade editada e mostre valor errado no modo offline.
-            db.delete("bipagens_pendentes", "cdproduto=? AND session_id=?",
-                arrayOf(cdproduto.toString(), sessionId))
-            db.insert("bipagens_pendentes", null, cv)
+            if (offline) {
+                // Mantém registros já sincronizados (referência do que o servidor tem).
+                // Remove apenas os pendentes e insere o delta para o próximo lote.
+                db.delete("bipagens_pendentes", "cdproduto=? AND session_id=? AND sincronizado=0",
+                    arrayOf(cdproduto.toString(), sessionId))
+                if (qtdeParaArmazenar != 0.0) {
+                    db.insert("bipagens_pendentes", null, cv)
+                }
+            } else {
+                // Online: servidor já foi atualizado; consolida Room com valor final marcado como synced.
+                db.delete("bipagens_pendentes", "cdproduto=? AND session_id=?",
+                    arrayOf(cdproduto.toString(), sessionId))
+                db.insert("bipagens_pendentes", null, cv)
+            }
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
