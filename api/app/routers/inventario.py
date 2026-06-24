@@ -320,14 +320,28 @@ def registrar_bipagem(
         nome_produto = row_prod["produto"]
         qtde_sistema = float(row_prod["qtdeatual"] or 0.0)
 
+        primeiro_scan_na_sessao = False
+
         if body.session_id:
+            # Passo 1: acumular na linha já existente desta sessão (SOMA)
             cur.execute(
-                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ?, SESSION_ID = ?, "
-                "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
-                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
-                (body.qtde, body.operador, body.session_id, qtde_sistema,
-                 body.cdproduto, body.cddeposito),
+                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
+                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ? RETURNING QTDE",
+                (body.qtde, body.operador, body.cdproduto, body.cddeposito, body.session_id),
             )
+            row = cur.fetchone()
+            if not row:
+                # Passo 2: existe linha de outra sessão ou do Automec → assumir e SUBSTITUIR qty
+                primeiro_scan_na_sessao = True
+                cur.execute(
+                    "UPDATE INVENTARIO_TEMP "
+                    "SET QTDE = ?, SESSION_ID = ?, OPERADOR = ?, "
+                    "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
+                    "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
+                    (body.qtde, body.session_id, body.operador, qtde_sistema,
+                     body.cdproduto, body.cddeposito),
+                )
+                row = cur.fetchone()
         else:
             cur.execute(
                 "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ?, "
@@ -335,11 +349,15 @@ def registrar_bipagem(
                 "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
                 (body.qtde, body.operador, qtde_sistema, body.cdproduto, body.cddeposito),
             )
-        row = cur.fetchone()
+            row = cur.fetchone()
+            if not row:
+                primeiro_scan_na_sessao = True
+
         if row:
             nova_qtde = float(row[0])
-            mensagem = f"Quantidade atualizada para {nova_qtde}"
+            mensagem = "Bipagem registrada" if primeiro_scan_na_sessao else f"Quantidade atualizada para {nova_qtde}"
         else:
+            primeiro_scan_na_sessao = True
             nova_qtde = body.qtde
             if body.session_id:
                 cur.execute(
@@ -357,6 +375,7 @@ def registrar_bipagem(
                 )
             mensagem = "Bipagem registrada"
 
+        if primeiro_scan_na_sessao:
             cur.execute(
                 "SELECT COUNT(*) FROM LOG_INVENTARIO "
                 "WHERE TIPO = 'EXCLUSAO' AND CDPRODUTO = ? AND CDDEPOSITO = ? "
@@ -500,14 +519,24 @@ def sincronizar_lote(
                         pass
                 continue
 
+            # Passo 1: acumular na linha desta sessão (SOMA)
             cur.execute(
-                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ?, SESSION_ID = ?, "
-                "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
-                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
-                (net_qtde, item.operador, body.session_id, item.qtde_sistema,
-                 item.cdproduto, body.cddeposito),
+                "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ? "
+                "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? AND SESSION_ID = ? RETURNING QTDE",
+                (net_qtde, item.operador, item.cdproduto, body.cddeposito, body.session_id),
             )
             row = cur.fetchone()
+            if not row:
+                # Passo 2: assumir linha de outra sessão/Automec → SUBSTITUIR qty
+                cur.execute(
+                    "UPDATE INVENTARIO_TEMP "
+                    "SET QTDE = ?, SESSION_ID = ?, OPERADOR = ?, "
+                    "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
+                    "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
+                    (net_qtde, body.session_id, item.operador, item.qtde_sistema,
+                     item.cdproduto, body.cddeposito),
+                )
+                row = cur.fetchone()
             if row:
                 nova_qtde = float(row[0])
             else:
