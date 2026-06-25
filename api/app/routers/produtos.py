@@ -7,16 +7,31 @@ from app.models.schemas import ProdutoResponse, CatalogoResponse, ProdutoCatalog
 router = APIRouter(prefix="/produtos", tags=["Produtos"])
 
 
+def _barcode_variants(codigo: str) -> list[str]:
+    """EAN-13 (13 dígitos com zero inicial) e UPC-A (12 dígitos) representam o mesmo código.
+    Scanners podem retornar qualquer um dos formatos independentemente do que o ERP gravou."""
+    variants = [codigo]
+    if codigo.isdigit():
+        if len(codigo) == 13 and codigo.startswith("0"):
+            variants.append(codigo[1:])   # EAN-13 → UPC-A
+        elif len(codigo) == 12:
+            variants.append("0" + codigo) # UPC-A → EAN-13
+    return variants
+
+
 @router.get("/barcode/{codigo}", response_model=ProdutoResponse)
 def buscar_por_barcode(
     codigo: str,
     cddeposito: int = Query(..., description="Depósito para consultar estoque"),
     current_user: dict = Depends(get_current_user),
 ):
+    variants = _barcode_variants(codigo)
+    placeholders = ", ".join(["?" for _ in variants])
+
     with get_connection() as con:
         cur = con.cursor()
         cur.execute(
-            """
+            f"""
             SELECT FIRST 1
                 P.CDPRODUTO,
                 P.PRODUTO,
@@ -26,16 +41,16 @@ def buscar_por_barcode(
             LEFT JOIN MOVIMENTO M
                 ON M.CDPRODUTO = CAST(P.CDPRODUTO AS VARCHAR(10))
                AND M.CDDEPOSITO = ?
-            WHERE P.CODIGOBARRA = ?
+            WHERE P.CODIGOBARRA IN ({placeholders})
               AND (P.INATIVO IS NULL OR P.INATIVO = 0)
             """,
-            (cddeposito, codigo),
+            (cddeposito, *variants),
         )
         produto = fetchone_as_dict(cur)
 
         if not produto:
             cur.execute(
-                """
+                f"""
                 SELECT FIRST 1
                     P.CDPRODUTO,
                     P.PRODUTO,
@@ -46,10 +61,10 @@ def buscar_por_barcode(
                 LEFT JOIN MOVIMENTO M
                     ON M.CDPRODUTO = CAST(P.CDPRODUTO AS VARCHAR(10))
                    AND M.CDDEPOSITO = ?
-                WHERE PC.CODBARRA = ?
+                WHERE PC.CODBARRA IN ({placeholders})
                   AND (P.INATIVO IS NULL OR P.INATIVO = 0)
                 """,
-                (cddeposito, codigo),
+                (cddeposito, *variants),
             )
             produto = fetchone_as_dict(cur)
 

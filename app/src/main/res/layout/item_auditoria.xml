@@ -53,7 +53,7 @@
             android:layout_height="wrap_content"
             android:textStyle="bold"
             android:textSize="13sp"
-            android:textColor="#212121"
+            android:textColor="@color/colorPrimaryText"
             android:maxLines="2"
             android:ellipsize="end" />
 

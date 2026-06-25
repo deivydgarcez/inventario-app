@@ -27,7 +27,7 @@
                 android:layout_weight="1"
                 android:textStyle="bold"
                 android:textSize="13sp"
-                android:textColor="#212121"
+                android:textColor="@color/colorPrimaryText"
                 android:maxLines="2"
                 android:ellipsize="end" />
 
