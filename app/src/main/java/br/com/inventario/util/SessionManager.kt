@@ -32,6 +32,7 @@ class SessionManager(val context: Context) {
     fun getMobileAdmin(): Int = prefs.getInt("mobile_admin", 0)
     fun canManageUsers(): Boolean = getMobileAdmin() == 1
     fun isMI(): Boolean = getUsuario()?.uppercase() == "MI"
+    fun isSupervisor(): Boolean = isMI() || getRole() in listOf("admin", "gerente")
     fun isLoggedIn(): Boolean = getToken() != null
 
     fun saveDeposito(cddeposito: Int, nomeDeposito: String) {

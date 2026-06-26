@@ -411,7 +411,7 @@ class RelatorioActivity : TimeoutActivity() {
 
         btnConsolidarNow.setOnClickListener {
             dialog?.dismiss()
-            if (divergencias > 0 && !session.isMI()) pedirSupervisor() else consolidar(null, null)
+            if (divergencias > 0 && !session.isSupervisor()) pedirSupervisor() else consolidar(null, null)
         }
         view.findViewById<MaterialButton>(R.id.btnCancelarConsolidar).setOnClickListener { dialog?.dismiss() }
 
@@ -471,7 +471,7 @@ class RelatorioActivity : TimeoutActivity() {
                     operador           = session.getOperador(),
                     supervisorLogin    = supervisorLogin,
                     supervisorSenha    = supervisorSenha,
-                    recontagemConfirmada = recontagemConfirmada || session.isMI(),
+                    recontagemConfirmada = recontagemConfirmada || session.isSupervisor(),
                     sessionId          = sessionId,
                 ))
                 if (response.isSuccessful) {
@@ -495,8 +495,8 @@ class RelatorioActivity : TimeoutActivity() {
                         org.json.JSONObject(errorBody).getString("detail")
                     } catch (_: Exception) { "Erro ao consolidar" }
                     // Servidor exige supervisor (edições desta sessão) — abre dialog automaticamente
-                    // MI é superadmin: nunca pede supervisor, mostra erro genérico se 403
-                    if (response.code() == 403 && detail.contains("Supervisor", ignoreCase = true) && !session.isMI()) {
+                    // Admin/gerente não precisam de outro supervisor, mostra erro genérico se 403
+                    if (response.code() == 403 && detail.contains("Supervisor", ignoreCase = true) && !session.isSupervisor()) {
                         pedirSupervisor(detail)
                     } else {
                         Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
