@@ -106,7 +106,8 @@ inventario-api/
 |---|---|
 | `INVENTARIO_TEMP` | Bipagens em andamento (por session_id + depósito) |
 | `INVENTARIO_SESSAO` | Sessões de contagem por dispositivo (status, início, fim) |
-| `LOTES_PROCESSADOS` | Idempotência do sync offline — evita lotes duplicados |
+| `LOTES_SYNC_PROCESSADOS` | Idempotência do sync offline — evita lotes duplicados |
+| `SCANS_PROCESSADOS` | Idempotência por scan individual (UUID) — evita duplicata em retry de rede |
 | `OPERADORES_APP` | Operadores de coleta físicos |
 | `LOG_INVENTARIO` | Auditoria completa de todas as operações (TIMESTAMP) |
 | `USUARIO_DEPOSITO` | Restrição de acesso por depósito por usuário |

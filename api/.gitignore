@@ -31,6 +31,9 @@ WinSW.exe
 nssm.exe
 *.exe
 
+# Spec auto-gerado pelo pyi-makespec (inferior ao instalador.spec manual)
+Instalar-Invec.spec
+
 # IDE
 .idea/
 .vscode/

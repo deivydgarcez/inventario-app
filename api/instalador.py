@@ -312,40 +312,158 @@ class App:
         self.btn_install.config(state=tk.DISABLED)
         threading.Thread(target=self._install_worker, daemon=True).start()
 
+    def _configure_firewall(self, porta: str, log_fw: str) -> bool:
+        """
+        Cria regra de entrada no Windows Firewall para a porta da API.
+        Inicia o serviço MpsSvc se estiver parado.
+        Retorna True se a regra foi criada (ou se o firewall está desligado — porta já acessível).
+        """
+        import time as _time
+        sysroot   = os.environ.get("SystemRoot", r"C:\Windows")
+        netsh     = os.path.join(sysroot, "System32", "netsh.exe")
+        ps_exe    = os.path.join(sysroot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+
+        with open(log_fw, "w", encoding="utf-8") as lfw:
+            def log(msg: str):
+                lfw.write(msg + "\n")
+                lfw.flush()
+
+            # 1. Estado do serviço Windows Firewall (MpsSvc)
+            log("=== Estado do Windows Firewall (MpsSvc) ===")
+            r_svc = subprocess.run(
+                ["sc", "query", "MpsSvc"],
+                capture_output=True, text=True, errors="replace"
+            )
+            log(r_svc.stdout.strip())
+
+            svc_running = "RUNNING" in r_svc.stdout
+            svc_stopped = "STOPPED" in r_svc.stdout
+
+            if not svc_running and not svc_stopped:
+                # Serviço não encontrado — firewall ausente, porta já acessível
+                log("MpsSvc nao encontrado. Firewall nao instalado — porta ja acessivel na rede.")
+                return True
+
+            if svc_stopped:
+                log("\nMpsSvc PARADO. Tentando iniciar...")
+                r_start = subprocess.run(
+                    ["sc", "start", "MpsSvc"],
+                    capture_output=True, text=True, errors="replace"
+                )
+                log(f"sc start MpsSvc => exit {r_start.returncode}: {r_start.stdout.strip()}")
+                _time.sleep(2)
+                r_check = subprocess.run(
+                    ["sc", "query", "MpsSvc"],
+                    capture_output=True, text=True, errors="replace"
+                )
+                svc_running = "RUNNING" in r_check.stdout
+                log(f"Apos iniciar: {'RUNNING' if svc_running else 'ainda STOPPED'}")
+
+            # 2. Verifica se o firewall está ativo (pode estar ligado mas com state=off)
+            log("\n=== Estado dos perfis de firewall ===")
+            r_state = subprocess.run(
+                [netsh, "advfirewall", "show", "allprofiles", "state"],
+                capture_output=True, text=True, errors="replace"
+            )
+            log(r_state.stdout.strip())
+            firewall_off = r_state.stdout.lower().count("off") >= 3  # todos os 3 perfis off
+
+            if firewall_off:
+                log("Todos os perfis estao OFF — firewall desativado, porta ja acessivel.")
+                return True
+
+            # 3. Método primário: PowerShell New-NetFirewallRule
+            log("\n=== PowerShell New-NetFirewallRule ===")
+            ps_cmd = (
+                f"Remove-NetFirewallRule -DisplayName '{SERVICE_NAME}' -ErrorAction SilentlyContinue; "
+                f"New-NetFirewallRule -DisplayName '{SERVICE_NAME}' -Direction Inbound "
+                f"-Action Allow -Protocol TCP -LocalPort {porta} -Profile Any -ErrorAction Stop"
+            )
+            r_ps = subprocess.run(
+                [ps_exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                 "-Command", ps_cmd],
+                capture_output=True, text=True, errors="replace"
+            )
+            lfw.write(r_ps.stdout)
+            lfw.write(r_ps.stderr)
+            log(f"exit code: {r_ps.returncode}")
+
+            if r_ps.returncode == 0:
+                log("\n=== Verificacao ===")
+                r_show = subprocess.run(
+                    [netsh, "advfirewall", "firewall", "show", "rule", f"name={SERVICE_NAME}"],
+                    capture_output=True, text=True, errors="replace"
+                )
+                log(r_show.stdout)
+                return True
+
+            # 4. Fallback: netsh
+            log("\n=== Fallback netsh ===")
+            subprocess.run(
+                [netsh, "advfirewall", "firewall", "delete", "rule", f"name={SERVICE_NAME}"],
+                capture_output=True
+            )
+            r_netsh = subprocess.run([
+                netsh, "advfirewall", "firewall", "add", "rule",
+                f"name={SERVICE_NAME}", "dir=in", "action=allow",
+                "protocol=TCP", f"localport={porta}", "profile=any",
+            ], capture_output=True, text=True, errors="replace")
+            lfw.write(r_netsh.stdout)
+            lfw.write(r_netsh.stderr)
+            log(f"netsh exit code: {r_netsh.returncode}")
+
+            log("\n=== Verificacao ===")
+            r_show = subprocess.run(
+                [netsh, "advfirewall", "firewall", "show", "rule", f"name={SERVICE_NAME}"],
+                capture_output=True, text=True, errors="replace"
+            )
+            log(r_show.stdout)
+
+            regra_criada = "Nenhuma regra" not in r_show.stdout and SERVICE_NAME in r_show.stdout
+            return regra_criada
+
     def _test_firebird(self) -> str | None:
         """INST-1: testa conexão com o banco antes de registrar o serviço.
         Retorna mensagem de erro ou None se OK."""
         try:
-            import firebirdsql
-            con = firebirdsql.connect(
-                host=self.v_host.get(),
+            from firebird.driver import connect as fb_connect
+            con = fb_connect(
                 database=self.v_db.get(),
+                host=self.v_host.get() or "localhost",
                 user=self.v_user.get(),
                 password=self.v_pass.get(),
-                port=3050,
             )
             con.close()
             return None
         except ImportError:
-            return None  # módulo não disponível no contexto do instalador — pula validação
+            return None  # driver não disponível no contexto do instalador — pula validação
         except Exception as e:
             return str(e)
+
+    def _test_porta(self) -> str | None:
+        """Verifica se a porta já está em uso antes de registrar o serviço."""
+        import socket
+        porta = int(self.v_port.get())
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            if s.connect_ex(("127.0.0.1", porta)) == 0:
+                return (
+                    f"A porta {porta} ja esta em uso por outro processo.\n"
+                    "Encerre o processo que ocupa essa porta ou escolha outra porta."
+                )
+        return None
 
     def _install_worker(self):
         install_dir = self.v_install.get()
         porta = self.v_port.get()
         try:
+            import time as _time
+
             self._set_status("Criando pastas...")
             os.makedirs(install_dir, exist_ok=True)
             os.makedirs(os.path.join(install_dir, "logs"), exist_ok=True)
 
-            self._set_status("Copiando arquivos do servidor...")
-            server_target = self._copy_server_files(install_dir)
-
-            self._set_status("Salvando configuracao (.env)...")
-            self._write_env(install_dir)
-
-            # INST-1: valida conexão com Firebird antes de continuar
+            # INST-1: valida conexão com Firebird antes de qualquer operação destrutiva
             self._set_status("Testando conexao com o banco de dados Firebird...")
             fb_erro = self._test_firebird()
             if fb_erro:
@@ -363,9 +481,36 @@ class App:
             if not nssm:
                 return
 
-            self._set_status("Removendo servico anterior (se houver)...")
+            # Para e remove o serviço ANTES de copiar arquivos: evita PermissionError
+            # quando InvecServidor.exe está bloqueado pelo serviço em execução.
+            self._set_status("Parando servico anterior (se houver)...")
             subprocess.run([nssm, "stop",   SERVICE_NAME], capture_output=True)
             subprocess.run([nssm, "remove", SERVICE_NAME, "confirm"], capture_output=True)
+            _time.sleep(1)  # aguarda o processo liberar o arquivo
+
+            # Verifica porta APÓS parar o serviço: detecta conflito com OUTROS processos
+            self._set_status("Verificando porta...")
+            porta_erro = self._test_porta()
+            if porta_erro:
+                self._set_status(porta_erro, "#C62828")
+                messagebox.showerror("Porta em uso", porta_erro)
+                return
+
+            # Exclusão no Windows Defender: evita que o Defender quarentine InvecServidor.exe
+            self._set_status("Configurando exclusao no antivirus...")
+            sysroot_pre = os.environ.get("SystemRoot", r"C:\Windows")
+            ps_exe_pre  = os.path.join(sysroot_pre, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+            subprocess.run(
+                [ps_exe_pre, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                 "-Command", f"Add-MpPreference -ExclusionPath '{install_dir}' -ErrorAction SilentlyContinue"],
+                capture_output=True
+            )
+
+            self._set_status("Copiando arquivos do servidor...")
+            server_target = self._copy_server_files(install_dir)
+
+            self._set_status("Salvando configuracao (.env)...")
+            self._write_env(install_dir)
 
             self._set_status("Registrando servico Windows...")
             is_exe = server_target.endswith(".exe")
@@ -388,27 +533,15 @@ class App:
             for key, val in cmds:
                 subprocess.run([nssm, "set", SERVICE_NAME, key, val], check=True)
 
-            self._set_status("Configurando firewall...")
-            subprocess.run(
-                ["netsh", "advfirewall", "firewall", "delete", "rule",
-                 f"name={SERVICE_NAME}"],
-                capture_output=True
-            )
-            subprocess.run([
-                "netsh", "advfirewall", "firewall", "add", "rule",
-                f"name={SERVICE_NAME}", "dir=in", "action=allow",
-                "protocol=TCP", f"localport={porta}", "profile=private,domain",
-            ], capture_output=True)
-
             self._set_status("Iniciando servico...")
             subprocess.run([nssm, "start", SERVICE_NAME])
 
             # INST-5: aguarda e verifica se o servidor respondeu (inclui verificação de migrations)
             self._set_status("Aguardando servidor iniciar...")
-            import time, urllib.request, urllib.error
+            import urllib.request, urllib.error
             api_ok = False
-            for _ in range(12):  # até 12s
-                time.sleep(1)
+            for _ in range(20):  # até 20s (máquinas lentas / migrations grandes)
+                _time.sleep(1)
                 try:
                     urllib.request.urlopen(f"http://localhost:{porta}/ping", timeout=2)
                     api_ok = True
@@ -416,10 +549,37 @@ class App:
                 except Exception:
                     pass
 
+            # Configura firewall APÓS o serviço iniciar: garante que sobrescrevemos a regra
+            # automática que o Windows cria (Domain+Private) quando o exe ouve pela primeira vez.
+            self._set_status("Configurando firewall...")
+            log_fw = os.path.join(install_dir, "logs", "firewall.log")
+            fw_ok = self._configure_firewall(porta, log_fw)
+            if not fw_ok:
+                messagebox.showwarning(
+                    "Aviso: regra de firewall",
+                    f"O servico foi instalado e esta rodando normalmente,\n"
+                    f"mas nao foi possivel criar a regra de firewall automaticamente.\n\n"
+                    f"Dispositivos na rede podem nao conseguir conectar na porta {porta}.\n\n"
+                    f"Para resolver, abra o PowerShell como Administrador e execute:\n\n"
+                    f"New-NetFirewallRule -DisplayName '{SERVICE_NAME}' "
+                    f"-Direction Inbound -Action Allow "
+                    f"-Protocol TCP -LocalPort {porta} -Profile Any\n\n"
+                    f"Detalhes do erro em:\n{log_fw}"
+                )
+
             if api_ok:
                 self._set_status(
                     f"Instalado com sucesso! Servico rodando em http://localhost:{porta}", "#2E7D32"
                 )
+                fechar = messagebox.askyesno(
+                    "Instalacao concluida",
+                    f"Servico instalado e iniciado com sucesso!\n\n"
+                    f"API disponivel em: http://localhost:{porta}\n"
+                    f"Pasta de instalacao: {install_dir}\n\n"
+                    f"Deseja fechar o instalador?"
+                )
+                if fechar:
+                    self.root.after(0, self.root.destroy)
             else:
                 log_erro = os.path.join(install_dir, "logs", "erro.log")
                 trecho = ""
@@ -432,27 +592,19 @@ class App:
                         pass
                 msg_extra = f"\n\nUltimas linhas do log de erros:\n{trecho}" if trecho else ""
                 self._set_status(
-                    "Servico iniciado mas API nao respondeu. Verifique os logs.", "#E65100"
+                    "Servico registrado, mas API nao respondeu. Verifique os logs.", "#E65100"
                 )
                 messagebox.showwarning(
                     "Atencao: servidor nao respondeu",
-                    f"O servico foi registrado, mas a API nao respondeu no ping em http://localhost:{porta}/ping\n\n"
+                    f"O servico foi registrado mas a API nao respondeu em http://localhost:{porta}/ping\n\n"
                     f"Possiveis causas:\n"
-                    f"  - Erro nas migrations (verifique {log_erro})\n"
+                    f"  - Antivirus bloqueou o InvecServidor.exe\n"
                     f"  - Banco de dados inacessivel\n"
                     f"  - Licenca invalida\n"
+                    f"  - Erro nas migrations\n\n"
+                    f"Verifique: {log_erro}"
                     f"{msg_extra}"
                 )
-
-            fechar = messagebox.askyesno(
-                "Instalacao concluida",
-                f"Servico instalado e iniciado com sucesso!\n\n"
-                f"API disponivel em: http://localhost:{porta}\n"
-                f"Pasta de instalacao: {install_dir}\n\n"
-                f"Deseja fechar o instalador?"
-            )
-            if fechar:
-                self.root.after(0, self.root.destroy)
 
         except subprocess.CalledProcessError as e:
             self._set_status(f"Erro na instalacao: {e}", "#C62828")
@@ -494,9 +646,16 @@ class App:
         else:
             subprocess.run(["sc", "stop",   SERVICE_NAME], capture_output=True)
             subprocess.run(["sc", "delete", SERVICE_NAME], capture_output=True)
+        sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+        netsh   = os.path.join(sysroot, "System32", "netsh.exe")
+        ps_exe  = os.path.join(sysroot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
         subprocess.run(
-            ["netsh", "advfirewall", "firewall", "delete", "rule",
-             f"name={SERVICE_NAME}"],
+            [ps_exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-Command", f"Remove-NetFirewallRule -DisplayName '{SERVICE_NAME}' -ErrorAction SilentlyContinue"],
+            capture_output=True
+        )
+        subprocess.run(
+            [netsh, "advfirewall", "firewall", "delete", "rule", f"name={SERVICE_NAME}"],
             capture_output=True
         )
         self._set_status("Servico removido com sucesso.")

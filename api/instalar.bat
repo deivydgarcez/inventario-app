@@ -123,7 +123,7 @@ echo Abrindo porta no firewall...
 netsh advfirewall firewall delete rule name="InvecAPI" >nul 2>&1
 netsh advfirewall firewall add rule ^
     name="InvecAPI" dir=in action=allow ^
-    protocol=TCP localport=!PORT! profile=any >nul
+    protocol=TCP localport=!PORT! profile=domain,private,public >nul
 
 :: ─── Iniciar ─────────────────────────────────────────────────────────────────
 echo Iniciando servico...
