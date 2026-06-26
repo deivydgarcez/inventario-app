@@ -438,9 +438,11 @@ class App:
         Retorna mensagem de erro ou None se OK."""
         try:
             from firebird.driver import connect as fb_connect
-            con = fb_connect(
-                database=self.v_db.get(),
-                host=self.v_host.get() or "localhost",
+            host = self.v_host.get().strip()
+            db   = self.v_db.get().strip()
+            dsn  = f"{host}:{db}" if host and host not in ("localhost", "127.0.0.1") else db
+            con  = fb_connect(
+                database=dsn,
                 user=self.v_user.get(),
                 password=self.v_pass.get(),
             )
