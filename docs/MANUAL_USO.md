@@ -30,11 +30,11 @@ O Invec é um aplicativo Android de coleta de inventário. Funciona em modo clie
 ┌──────────────────────────────────────────────────────────────┐
 │                        App Invec                             │
 ├─────────────────┬──────────────────────┬─────────────────────┤
-│   📷 Scanner    │    📊 Relatório       │  🔒 Consolidação    │
+│    SCANNER      │      RELATORIO       │   CONSOLIDACAO      │
 │                 │                      │                     │
-│ Câmera + ML Kit │ Itens bipados        │ Grava no Automec    │
-│ Bluetooth HID   │ Dif. de estoque      │ com autorização     │
-│ Digitação manual│ Editar / Remover     │ de supervisor       │
+│ Camera + ML Kit │ Itens bipados        │ Grava no Automec    │
+│ Bluetooth HID   │ Dif. de estoque      │ com autorizacao     │
+│ Digitacao manual│ Editar / Remover     │ de supervisor       │
 └─────────────────┴──────────────────────┴─────────────────────┘
 ```
 
@@ -179,7 +179,7 @@ flowchart LR
 
 ```
 ┌─────────────────────────────────────┐
-│ ← [Depósito]         [Bluetooth] ⚡│  ← toolbar preta translúcida
+│ ← [Depósito]      [Bluetooth][flash]│  ← toolbar preta translúcida
 ├─────────────────────────────────────┤
 │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │
 │ ▓▓▓▓▓ ┌──────────────────────┐ ▓▓▓ │
@@ -420,9 +420,9 @@ A recontagem permite fazer uma segunda contagem para confirmar divergências ant
 │ ▓▓▓▓▓ │  ─────────────────── │ ▓▓▓ │  ← câmera idêntica ao scanner
 │ ▓▓▓▓▓ └──────────────────────┘ ▓▓▓ │
 ├─────────────────────────────────────┤
-│ PRODUTO X  │  1ª: 5  │  2ª: (--)  │  ← ainda não recontado
-│ PRODUTO Y  │  1ª: 3  │  2ª:  3    │  ← igual — sem divergência
-│ PRODUTO Z  │  1ª: 8  │  2ª:  7    │  ← diferente — destacado
+│  PRODUTO X    1a cnt: 5    2a cnt: --    ← ainda nao recontado │
+│  PRODUTO Y    1a cnt: 3    2a cnt:  3   ← igual, sem diferenca │
+│  PRODUTO Z    1a cnt: 8    2a cnt:  7   ← diferente, destacado │
 │                                     │
 │  [ Escanear ]   [ Digitar código ] │
 └─────────────────────────────────────┘
@@ -561,13 +561,13 @@ Disponível apenas para **gerentes e administradores**, botão **Auditoria** no 
 │ ← Auditoria                        │
 ├─────────────────────────────────────┤
 │ [EDICAO]  PRODUTO X                 │
-│ 10 → 12   João   📱 device-abc  14:32│
+│ 10 → 12   Joao    [device-abc]  14:32 │
 ├─────────────────────────────────────┤
 │ [EXCLUSAO]  PRODUTO Y               │
-│  5 → 0    Maria  📱 device-xyz  15:01│
+│  5 → 0    Maria   [device-xyz]  15:01│
 ├─────────────────────────────────────┤
 │ [ALERTA]  PRODUTO Z                 │
-│ Sist: 3  Contada: 50  📱 ...  15:45 │
+│ Sist: 3  Contada: 50  [...]   15:45 │
 └─────────────────────────────────────┘
 ```
 
