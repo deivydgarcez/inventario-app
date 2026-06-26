@@ -101,7 +101,6 @@ class ScannerActivity : TimeoutActivity() {
             adapter = scannedAdapter
         }
 
-        binding.btnTrocarModo.setOnClickListener { mostrarSeletorModo() }
         binding.btnDigitarCodigo.setOnClickListener { digitarManualmente() }
         binding.btnEscanear.setOnClickListener { iniciarScan() }
         binding.switchMultiplo.setOnCheckedChangeListener { _, checked ->
@@ -228,7 +227,7 @@ class ScannerActivity : TimeoutActivity() {
             binding.tvCameraInstruction.visibility = View.VISIBLE
             binding.btnEscanear.visibility = View.VISIBLE
             binding.switchRow.visibility = View.VISIBLE
-            binding.btnTrocarModo.text = "BT"
+            invalidateOptionsMenu()
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 == PackageManager.PERMISSION_GRANTED
@@ -253,7 +252,7 @@ class ScannerActivity : TimeoutActivity() {
             binding.tvCameraInstruction.visibility = View.GONE
             binding.btnEscanear.visibility = View.GONE
             binding.switchRow.visibility = View.GONE
-            binding.btnTrocarModo.text = "Câmera"
+            invalidateOptionsMenu()
             btBuffer.clear()
             resetarBotaoEscanear()
         }
@@ -616,22 +615,20 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val btItem    = menu.findItem(br.com.inventario.R.id.action_bluetooth)
         val flashItem = menu.findItem(br.com.inventario.R.id.action_flash)
-        val flashVisivel = scanMode == ScanMode.CAMERA
-        flashItem?.isVisible = flashVisivel
+        val emCamara  = scanMode == ScanMode.CAMERA
+        flashItem?.isVisible = emCamara
         flashItem?.icon?.setTint(if (flashLigado) Color.parseColor("#FFD700") else Color.WHITE)
-        // Ajusta margem do botão: 2 ícones no modo câmera (~104dp), 1 no modo BT (~52dp)
-        val endDp = if (flashVisivel) 104 else 52
-        val endPx = (endDp * resources.displayMetrics.density).toInt()
-        (binding.btnTrocarModo.layoutParams as? androidx.appcompat.widget.Toolbar.LayoutParams)
-            ?.marginEnd = endPx
-        binding.btnTrocarModo.requestLayout()
+        // BT ativo (laranja) quando em modo Bluetooth; branco quando em modo câmera
+        btItem?.icon?.setTint(if (emCamara) Color.WHITE else Color.parseColor("#CC5B2A"))
         return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             br.com.inventario.R.id.action_sincronizar -> { sincronizarManual(); true }
+            br.com.inventario.R.id.action_bluetooth -> { mostrarSeletorModo(); true }
             br.com.inventario.R.id.action_flash -> {
                 flashLigado = !flashLigado
                 camera?.cameraControl?.enableTorch(flashLigado)
