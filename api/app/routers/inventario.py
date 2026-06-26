@@ -886,10 +886,12 @@ def consolidar_inventario(
                 if abs(float(item["qtde_contada"] or 0) - baseline) > 0.001:
                     divergencias += 1
 
+            is_mi = current_user.get("login", "").upper() == "MI"
             if (
                 divergencias >= LIMIAR_RECONTAGEM_MINIMO
                 and (divergencias / total) >= LIMIAR_RECONTAGEM
                 and not body.recontagem_confirmada
+                and not is_mi
             ):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -910,8 +912,7 @@ def consolidar_inventario(
                     motivo_supervisor = "Houve edições de quantidade nesta sessão."
 
                 # MI é superadmin — auto-autoriza sem precisar de outro supervisor
-                is_mi_user = current_user.get("login", "").upper() == "MI"
-                if is_mi_user:
+                if is_mi:
                     supervisor_login_validado = current_user.get("login")
                 # SEC-2: aceita supervisor_token (pré-autenticado) ou supervisor_senha (legado)
                 elif body.supervisor_token:
@@ -923,8 +924,7 @@ def consolidar_inventario(
                             status_code=403,
                             detail="Supervisor precisa ser gerente ou administrador",
                         )
-                    is_mi_user = current_user.get("login", "").upper() == "MI"
-                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3 and not is_mi_user
+                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3 and not is_mi
                     if supervisor_login_validado.lower() == current_user.get("login", "").lower() and quem_consolida_operador:
                         raise HTTPException(
                             status_code=400,
@@ -953,8 +953,7 @@ def consolidar_inventario(
                             status_code=403,
                             detail="Supervisor precisa ser gerente ou administrador",
                         )
-                    is_mi_user = current_user.get("login", "").upper() == "MI"
-                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3 and not is_mi_user
+                    quem_consolida_operador = (current_user.get("idgrupo") or 3) == 3 and not is_mi
                     mesmo_usuario = supervisor["login"].lower() == current_user.get("login", "").lower()
                     if mesmo_usuario and quem_consolida_operador:
                         raise HTTPException(
