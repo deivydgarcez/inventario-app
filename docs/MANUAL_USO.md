@@ -63,7 +63,7 @@ O Invec é um aplicativo Android de coleta de inventário. Funciona em modo clie
 │  │  Login                        │  │  ← campo de texto
 │  └───────────────────────────────┘  │
 │  ┌───────────────────────────────┐  │
-│  │  Senha                    [👁]│  │  ← 👁 mostra/oculta a senha
+│  │  Senha                   [eye]│  │  ← mostra/oculta a senha
 │  └───────────────────────────────┘  │
 │                                     │
 │  ┌───────────────────────────────┐  │
@@ -130,11 +130,11 @@ http://192.168.1.31:8000/
 │                                     │
 │  ╔═════════════════════════════════╗ │
 │  ║                                 ║ │
-│  ║    📷   Iniciar Coleta          ║ │  ← botão laranja grande
-│  ║                                 ║ │     (desabilitado sem depósito)
+│  ║      Iniciar Coleta              ║ │  ← botão laranja grande
+│  ║                                 ║ │     (desabilitado sem deposito)
 │  ╚═════════════════════════════════╝ │
 │                                     │
-│  ┌── 📊 Ver Relatório ────────────┐  │  ← botão com borda
+│  ┌── Ver Relatorio ───────────────┐  │  ← botão com borda
 │  └────────────────────────────────┘  │
 │                                     │
 │       Modo escuro          ◯        │  ← switch
@@ -246,7 +246,7 @@ Toque em **[Bluetooth]** na toolbar para alternar. A câmera apaga e aparece:
 ```
 ┌──────────────────────────────────┐
 │                                  │
-│       🔵  (ícone Bluetooth)      │
+│       [bt]  (icone Bluetooth)    │
 │                                  │
 │    Leitor Bluetooth ativo        │
 │  Aponte o leitor para o código   │
@@ -420,9 +420,9 @@ A recontagem permite fazer uma segunda contagem para confirmar divergências ant
 │ ▓▓▓▓▓ │  ─────────────────── │ ▓▓▓ │  ← câmera idêntica ao scanner
 │ ▓▓▓▓▓ └──────────────────────┘ ▓▓▓ │
 ├─────────────────────────────────────┤
-│  PRODUTO X    1a cnt: 5    2a cnt: --    ← ainda nao recontado │
-│  PRODUTO Y    1a cnt: 3    2a cnt:  3   ← igual, sem diferenca │
-│  PRODUTO Z    1a cnt: 8    2a cnt:  7   ← diferente, destacado │
+│ PRODUTO X   1a: 5   2a: ---        │  ← nao bipado na 2a vez
+│ PRODUTO Y   1a: 3   2a:   3        │  ← igual, sem diferenca
+│ PRODUTO Z   1a: 8   2a:   7        │  ← diferente, destacado
 │                                     │
 │  [ Escanear ]   [ Digitar código ] │
 └─────────────────────────────────────┘
@@ -560,14 +560,14 @@ Disponível apenas para **gerentes e administradores**, botão **Auditoria** no 
 ┌─────────────────────────────────────┐
 │ ← Auditoria                        │
 ├─────────────────────────────────────┤
-│ [EDICAO]  PRODUTO X                 │
-│ 10 → 12   Joao    [device-abc]  14:32 │
+│ [EDICAO]   PRODUTO X                │
+│  10→12  Joao   [dev-abc]    14:32   │
 ├─────────────────────────────────────┤
 │ [EXCLUSAO]  PRODUTO Y               │
-│  5 → 0    Maria   [device-xyz]  15:01│
+│   5→0  Maria   [dev-xyz]    15:01   │
 ├─────────────────────────────────────┤
-│ [ALERTA]  PRODUTO Z                 │
-│ Sist: 3  Contada: 50  [...]   15:45 │
+│ [ALERTA]   PRODUTO Z                │
+│  Sist:3  Conta:50  [...]    15:45   │
 └─────────────────────────────────────┘
 ```
 
