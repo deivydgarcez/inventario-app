@@ -380,11 +380,17 @@ class RelatorioActivity : TimeoutActivity() {
             abs(adp.getItem(pos).diferenca ?: 0.0) > 0.001
         }
 
+        val jaRecontou = recontagemConfirmada || session.isSupervisor()
+
         val msg = buildString {
             append("Depósito: ${session.getNomeDeposito()}\n\n")
             append("$total itens para consolidar.\n")
             if (divergencias > 0) {
-                append("$divergencias itens com diferença de estoque.\n\nFaça a recontagem antes de consolidar para garantir os valores.")
+                if (jaRecontou) {
+                    append("$divergencias itens ainda com diferença de estoque.")
+                } else {
+                    append("$divergencias itens com diferença de estoque.\n\nFaça a recontagem antes de consolidar para garantir os valores.")
+                }
             } else {
                 append("Sem divergências encontradas. Pode consolidar com segurança.")
             }
@@ -396,7 +402,7 @@ class RelatorioActivity : TimeoutActivity() {
         var dialog: AlertDialog? = null
 
         val btnConsolidarNow = view.findViewById<MaterialButton>(R.id.btnConsolidarNow)
-        if (divergencias > 0) {
+        if (divergencias > 0 && !jaRecontou) {
             view.findViewById<MaterialButton>(R.id.btnFazerRecontagem).apply {
                 visibility = View.VISIBLE
                 setOnClickListener {
@@ -411,7 +417,7 @@ class RelatorioActivity : TimeoutActivity() {
 
         btnConsolidarNow.setOnClickListener {
             dialog?.dismiss()
-            if (divergencias > 0 && !session.isSupervisor()) pedirSupervisor() else consolidar(null, null)
+            if (divergencias > 0 && !jaRecontou) pedirSupervisor() else consolidar(null, null)
         }
         view.findViewById<MaterialButton>(R.id.btnCancelarConsolidar).setOnClickListener { dialog?.dismiss() }
 
