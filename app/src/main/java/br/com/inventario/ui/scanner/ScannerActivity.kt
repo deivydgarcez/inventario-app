@@ -617,8 +617,15 @@ class ScannerActivity : TimeoutActivity() {
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         val flashItem = menu.findItem(br.com.inventario.R.id.action_flash)
-        flashItem?.isVisible = scanMode == ScanMode.CAMERA
+        val flashVisivel = scanMode == ScanMode.CAMERA
+        flashItem?.isVisible = flashVisivel
         flashItem?.icon?.setTint(if (flashLigado) Color.parseColor("#FFD700") else Color.WHITE)
+        // Ajusta margem do botão: 2 ícones no modo câmera (~104dp), 1 no modo BT (~52dp)
+        val endDp = if (flashVisivel) 104 else 52
+        val endPx = (endDp * resources.displayMetrics.density).toInt()
+        (binding.btnTrocarModo.layoutParams as? androidx.appcompat.widget.Toolbar.LayoutParams)
+            ?.marginEnd = endPx
+        binding.btnTrocarModo.requestLayout()
         return super.onPrepareOptionsMenu(menu)
     }
 
