@@ -48,8 +48,6 @@ class App:
         self.v_install    = tk.StringVar(value=DEFAULT_DIR)
         self.v_db         = tk.StringVar()
         self.v_host       = tk.StringVar(value="localhost")
-        self.v_user       = tk.StringVar(value="SYSDBA")
-        self.v_pass       = tk.StringVar(value="masterkey")
         self.v_port       = tk.StringVar(value="8000")
         self.v_idempresa  = tk.StringVar(value="1")
         self.v_license    = tk.StringVar()
@@ -105,13 +103,6 @@ class App:
         ttk.Entry(f, textvariable=self.v_host, width=28).grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
         r += 1
 
-        row_label(r, "Usuario Firebird:")
-        ttk.Entry(f, textvariable=self.v_user, width=20).grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
-        r += 1
-
-        row_label(r, "Senha Firebird:")
-        ttk.Entry(f, textvariable=self.v_pass, width=20, show="*").grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
-        r += 1
 
         row_label(r, "Porta da API:")
         ttk.Entry(f, textvariable=self.v_port, width=8).grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
@@ -190,8 +181,6 @@ class App:
                 mapping = {
                     'FB_DATABASE': self.v_db,
                     'FB_HOST':     self.v_host,
-                    'FB_USER':     self.v_user,
-                    'FB_PASSWORD': self.v_pass,
                     'PORT':        self.v_port,
                     'IDEMPRESA':   self.v_idempresa,
                     'LICENSE_KEY': self.v_license,
@@ -230,8 +219,8 @@ class App:
             fh.write(
                 f"FB_DATABASE={self.v_db.get()}\n"
                 f"FB_HOST={self.v_host.get()}\n"
-                f"FB_USER={self.v_user.get()}\n"
-                f"FB_PASSWORD={self.v_pass.get()}\n"
+                f"FB_USER=SYSDBA\n"
+                f"FB_PASSWORD=masterkey\n"
                 f"PORT={self.v_port.get()}\n"
                 f"IDEMPRESA={self.v_idempresa.get() or '1'}\n"
                 f"LICENSE_KEY={self.v_license.get()}\n"
@@ -443,8 +432,8 @@ class App:
             dsn  = f"{host}:{db}" if host and host not in ("localhost", "127.0.0.1") else db
             con  = fb_connect(
                 database=dsn,
-                user=self.v_user.get(),
-                password=self.v_pass.get(),
+                user="SYSDBA",
+                password="masterkey",
             )
             con.close()
             return None
