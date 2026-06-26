@@ -1,5 +1,103 @@
 # CHANGELOG — Invec
 
+## [1.3.2] — 2026-06-25
+
+### Novas funcionalidades
+
+#### Android — Flash da câmera
+
+- **Flash no scanner e na recontagem**: botão raio (ícone Material Design) na toolbar do `ScannerActivity` e `RecontagemActivity`. Toque alterna a lanterna da câmera traseira. Implementado via `camera.cameraControl.enableTorch(ligado)` do CameraX. Estado não persiste entre sessões.
+- Arquivos novos: `res/drawable/ic_flash_on.xml`, `res/menu/menu_scanner.xml`
+
+#### Android — Modo escuro
+
+- **Switch na tela inicial** (`MainActivity`): usuário alterna entre tema claro e escuro sem sair do app
+- Preferência salva em `SessionManager` (`dark_mode: Boolean`)
+- `InvecApp.kt` aplica o modo no startup via `AppCompatDelegate.setDefaultNightMode()`
+- `res/values-night/colors.xml`: variante de cores para o tema escuro (fundo de card `#1E1E1E`, texto `#E0E0E0`)
+- Arquivos novos: `InvecApp.kt`, `res/values-night/colors.xml`, `res/drawable/ic_sync.xml`
+
+---
+
+### Correções de bugs
+
+#### Android — Modo offline
+
+- **Scan offline instantâneo**: scanner registra a bipagem no Room imediatamente; a requisição ao servidor vai em background. Antes, o app aguardava a resposta do servidor, travando a tela se não houvesse rede.
+- **Edição de quantidade offline** (`RelatorioActivity`): editar a quantidade de um item funciona sem conexão.
+- **Crash offline corrigido**: tratamento de exceção ao tentar bipar sem conexão.
+- **Scanner offline desbloqueia** sem depender da flag `completo` do catálogo: o scanner já opera se o catálogo tem produtos locais, independente de o download ter sido marcado como concluído.
+- **ServerMonitor**: ping de `GET /ping` reduzido de 30 s para 8 s — reconexão detectada mais rapidamente.
+
+#### Android — Modo escuro — textos invisíveis
+
+- `tvProduto` em `item_relatorio.xml`, `item_auditoria.xml` e `item_recontagem.xml` usava `textColor=#212121` fixo. Em fundos escuros (`#1E1E1E`) o texto ficava invisível. Corrigido para `@color/colorPrimaryText` que tem variante night `#E0E0E0`.
+
+#### Backend — `app/routers/inventario.py`
+
+- **Bug crítico — PK_INVENTARIO_TEMP bloqueava toda bipagem**: o `UPDATE` filtrava por `SESSION_ID` no `WHERE`, resultando em `rowcount=0` quando já existia linha para `(CDPRODUTO, CDDEPOSITO)` de sessão anterior ou inserida pelo Automec. O `INSERT` subsequente falhava com violação de `PRIMARY KEY`. Fix: `WHERE` usa apenas `(CDPRODUTO, CDDEPOSITO)`; `SESSION_ID`, `QTDEATUAL_SNAP` e `ORIGEM` são atualizados no `SET`.
+- **Bipagem em linha do Automec acumulava em vez de substituir**: quando `INVENTARIO_TEMP` já tinha linha do Automec (ou de sessão anterior), o `UPDATE` fazia `QTDE + scan_qty`, somando sobre a contagem antiga. Nova lógica em 3 passos: ① `UPDATE` filtrando `SESSION_ID` — acumula na linha da sessão atual; ② se `rowcount=0`: `UPDATE` sem filtro de sessão, `SET QTDE = scan_qty` — assume a linha existente e **substitui** a quantidade; ③ se ainda `rowcount=0`: `INSERT`.
+- **Lote aceita delta negativo**: `net_qtde <= 0` substituído por `net_qtde == 0` para não descartar edições offline com resultado negativo.
+
+#### Backend — `app/routers/produtos.py`
+
+- **EAN-13 vs UPC-A — zeros iniciais**: o scanner pode retornar 12 dígitos (UPC-A) enquanto o ERP gravou 13 (EAN-13) com zero à esquerda, ou vice-versa. A nova função `_barcode_variants()` gera ambas as formas e a query usa `IN()` para encontrar qualquer uma — resolve produto não encontrado na busca por código de barras.
+
+#### Instalador — `instalador.py`
+
+- **Firewall 100% automático** — 5 cenários tratados:
+  1. `MpsSvc` ausente (Windows Firewall desativado) → pula, porta já acessível
+  2. `MpsSvc` parado → inicia via `sc start` antes de adicionar regra
+  3. Todos os perfis OFF (`netsh show allprofiles`) → pula
+  4. Método primário: PowerShell `New-NetFirewallRule -ExecutionPolicy Bypass`
+  5. Fallback: `netsh profile=any` se PowerShell falhar
+  - Desinstalação: `Remove-NetFirewallRule` (PS) + `netsh delete` como dupla garantia
+  - Logs unificados em `C:\Invec\logs\firewall.log` com seções por etapa
+- **Sequência de instalação corrigida** (4 bugs):
+  1. Para o serviço **antes** de copiar arquivos — evita `PermissionError` em atualizações
+  2. Verifica porta **após** parar o serviço — não bloqueia atualização quando o próprio serviço estava usando a porta
+  3. Adiciona exclusão no Windows Defender antes de copiar `InvecServidor.exe` — evita detecção como ameaça durante a cópia
+  4. Dialog "Instalação concluída" só aparece quando o servidor respondeu com sucesso
+  5. Timeout do ping aumentado de 12 s para 20 s — suporta máquinas lentas e migrations grandes
+
+#### Documentação
+
+- **`docs/BANCO_TABELAS.md`** (novo): lista completa de todas as tabelas e colunas criadas pelo Invec no banco Firebird do Automec, com tipo de dado, propósito e observações de cada campo.
+
+---
+
+### Arquivos criados / modificados
+
+**Android:**
+- `InvecApp.kt` — Application class; aplica modo escuro no startup
+- `res/drawable/ic_flash_on.xml` — ícone de flash (raio)
+- `res/drawable/ic_sync.xml` — ícone de sincronização
+- `res/menu/menu_scanner.xml` — menu toolbar do scanner (flash)
+- `res/values-night/colors.xml` — paleta de cores do modo escuro
+- `res/layout/item_relatorio.xml` — textColor corrigido
+- `res/layout/item_auditoria.xml` — textColor corrigido
+- `res/layout/item_recontagem.xml` — textColor corrigido
+- `res/layout/activity_recontagem.xml` — botão flash adicionado
+- `res/layout/activity_main.xml` — switch modo escuro
+- `ui/scanner/ScannerActivity.kt` — flash, offline instantâneo, modo câmera
+- `ui/relatorio/RelatorioActivity.kt` — edição offline, ic_sync
+- `ui/recontagem/RecontagemActivity.kt` — flash, crash offline
+- `util/SessionManager.kt` — `dark_mode` preference
+- `util/ServerMonitor.kt` — ping 30 s → 8 s
+- `AndroidManifest.xml` — `android:name=".InvecApp"`
+
+**Backend:**
+- `app/routers/inventario.py` — fix PK_INVENTARIO_TEMP, lógica 3 passos de bipagem, lote delta negativo
+- `app/routers/produtos.py` — EAN-13/UPC-A variants
+
+**Instalador:**
+- `instalador.py` — firewall automático completo, sequência de instalação corrigida
+
+**Documentação:**
+- `docs/BANCO_TABELAS.md` — novo documento de referência do banco
+
+---
+
 ## [1.3.1] — 2026-06-24
 
 ### Correções de bugs

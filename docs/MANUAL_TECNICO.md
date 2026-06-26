@@ -17,6 +17,19 @@ O Invec é um sistema cliente-servidor composto por dois componentes:
                                               [Firebird 5 / Automec]
 ```
 
+```mermaid
+graph TD
+    A1[📱 Celular 1] -->|HTTP/JSON Wi-Fi| S
+    A2[📱 Celular 2] -->|HTTP/JSON Wi-Fi| S
+    A3[📱 Celular N] -->|HTTP/JSON Wi-Fi| S
+    S[🖥️ InvecServidor.exe\nFastAPI + Uvicorn\nserviço Windows NSSM]
+    S <-->|firebird-driver\nnativo| FB[(🗄️ Firebird 5\nAutomec .FDB)]
+    FB --> TI[INVENTARIO_TEMP]
+    FB --> IS[INVENTARIO_SESSAO]
+    FB --> LI[LOG_INVENTARIO]
+    FB --> MP[MOV_PRODUTO\ntrigger Automec]
+```
+
 - Vários celulares operam simultaneamente no mesmo depósito
 - Servidor registrado como serviço Windows (`InvecAPI` via NSSM) — inicia com o Windows
 - Toda comunicação é autenticada via JWT Bearer token no header `Authorization`
@@ -136,6 +149,31 @@ Qualquer toque na tela (`onUserInteraction`) reinicia o timer. Ao expirar, limpa
 | `usuario_login` | Login do usuário logado |
 | `usuario_role` | Role do usuário (`operador`/`gerente`/`admin`) |
 | `mobile_admin` | Flag se o usuário tem admin mobile |
+| `dark_mode` | `Boolean` — modo escuro ativo ou não |
+| `session_id` | UUID da sessão de contagem atual (por depósito) |
+
+### Modo Escuro
+
+Switch na tela inicial (`MainActivity`). Preferência salva em `SessionManager.dark_mode`. `InvecApp.kt` (subclasse de `Application`) aplica o modo no startup, antes de qualquer Activity inflar layout:
+
+```kotlin
+// InvecApp.kt
+val darkMode = SessionManager(this).isDarkMode()
+AppCompatDelegate.setDefaultNightMode(
+    if (darkMode) AppCompatDelegate.MODE_NIGHT_YES
+    else          AppCompatDelegate.MODE_NIGHT_NO
+)
+```
+
+Paleta de cores em `res/values-night/colors.xml`:
+
+| Atributo | Modo claro | Modo escuro |
+|---|---|---|
+| `colorPrimary` | `#1565C0` | `#90CAF9` |
+| `colorPrimaryText` | `#212121` | `#E0E0E0` |
+| fundo de card | `#FFFFFF` | `#1E1E1E` |
+
+> **Atenção**: sempre use `@color/colorPrimaryText` (não `#212121` hardcoded) em itens de lista — a variante night garante legibilidade no tema escuro.
 
 ---
 
@@ -223,15 +261,42 @@ O app suporta operação sem conexão contínua com o servidor.
 
 ### Conectividade — ServerMonitor
 
-`util/ServerMonitor.kt` pinga `GET /ping` a cada 30 segundos. Expõe `StateFlow<Boolean> isOnline` observado por todas as Activities. Chip "● Online" / "● Offline" no topo do Relatório muda em tempo real.
+`util/ServerMonitor.kt` pinga `GET /ping` a cada **8 segundos**. Expõe `StateFlow<Boolean> isOnline` observado por todas as Activities. Chip "● Online" / "● Offline" no topo do Relatório muda em tempo real.
 
 ### Scan offline
 
+```mermaid
+sequenceDiagram
+    participant Op as Operador
+    participant App as ScannerActivity
+    participant Room as Room (SQLite)
+    participant Sync as SyncManager
+    participant API as InvecServidor
+
+    Op->>App: Toca "Escanear"
+    App->>Room: INSERT bipagem_pendente (sincronizado=false)
+    App->>App: Atualiza UI imediatamente
+    alt Online
+        App->>API: POST /inventario/bipagem (background)
+        API-->>App: {qtde, alerta}
+        App->>Room: marca sincronizado=true
+    else Offline
+        Note over App,Room: Scan já registrado no Room
+        App-->>Op: UI atualizada sem esperar rede
+    end
+    Note over Sync: Quando reconectar (ping a cada 8s)
+    Sync->>Room: lê bipagens_pendentes não sincronizadas
+    Sync->>API: POST /inventario/bipagem/lote
+    API-->>Sync: 200 OK (idempotente via LOTES_PROCESSADOS)
+    Sync->>Room: marca todas como sincronizado=true
+```
+
 1. Usuário escaneia produto
-2. App tenta `POST /inventario/bipagem` (se online)
-3. Se offline (ou falha de rede): grava na tabela Room `bipagens_pendentes` com `sincronizado=false`
-4. `QTDEATUAL_SNAP` é capturado no 1º scan do produto (do servidor ou do cache local)
-5. Relatório offline: construído a partir das bipagens_pendentes no Room
+2. App grava imediatamente no Room (sem aguardar rede)
+3. Se online: POST ao servidor em coroutine de background
+4. Se offline: scan registrado localmente; UI atualizada sem travamento
+5. `QTDEATUAL_SNAP` é capturado no 1º scan do produto (servidor ou cache local)
+6. Relatório offline: construído a partir das `bipagens_pendentes` no Room
 
 ### Sincronização — SyncManager
 
@@ -255,19 +320,32 @@ Cada celular gera um `SESSION_ID` UUID ao entrar em um depósito. Isso permite:
 
 ## Fluxo de Bipagem
 
-`POST /inventario/bipagem` executa um UPDATE atômico com `RETURNING`:
+`POST /inventario/bipagem` executa lógica em 3 passos para lidar com linhas pré-existentes do Automec:
 
-```sql
-UPDATE INVENTARIO_TEMP
-   SET QTDE = QTDE + 1, OPERADOR = :operador
- WHERE CDPRODUTO = :prod AND CDDEPOSITO = :dep
-RETURNING QTDE
+```mermaid
+flowchart TD
+    A[POST /inventario/bipagem\ncdproduto, cddeposito, session_id, qty] --> B
+
+    B["① UPDATE INVENTARIO_TEMP\n   SET QTDE = QTDE + qty\n   WHERE CDPRODUTO=? AND CDDEPOSITO=?\n         AND SESSION_ID=?\n   RETURNING QTDE"] --> C{rowcount?}
+
+    C -->|1 linha| D[✅ Acumulou na sessão atual\nRetorna nova QTDE]
+
+    C -->|0 linhas| E["② UPDATE INVENTARIO_TEMP\n   SET QTDE = qty, SESSION_ID=?\n        QTDEATUAL_SNAP=snap\n   WHERE CDPRODUTO=? AND CDDEPOSITO=?\n   RETURNING QTDE"]
+
+    E --> F{rowcount?}
+
+    F -->|1 linha| G[✅ Assumiu linha do Automec\nSubstituiu a quantidade]
+
+    F -->|0 linhas| H["③ INSERT INTO INVENTARIO_TEMP\n   (CDPRODUTO, CDDEPOSITO, SESSION_ID,\n    QTDE, QTDEATUAL_SNAP, OPERADOR, ...)"]
+
+    H --> I[✅ Primeiro scan do produto]
+
+    D & G & I --> J{QTDE > 2×SNAP\ne SNAP ≥ 10?}
+    J -->|Sim| K[Grava ALERTA\nretorna alerta=true]
+    J -->|Não| L[Retorna qtde normal]
 ```
 
-- **UPDATE retorna 1 linha** → produto já existe na sessão, quantidade incrementada
-- **UPDATE retorna 0 linhas** → primeiro scan: executa `INSERT` com `QTDEATUAL_SNAP` = estoque atual de `MOVIMENTO`
 - `QTDEATUAL_SNAP` é gravado apenas uma vez (no primeiro scan) e nunca alterado depois
-- Se `QTDE > 2 × QTDEATUAL_SNAP` e `QTDEATUAL_SNAP ≥ 10`: grava `ALERTA` no log e retorna `alerta=true` para o app exibir confirmação
 - Se produto foi excluído e re-escaneado na mesma sessão (janela 12h): grava `ALERTA_REESCAN`
 
 ### Scanner Android — Modo Câmera (CameraX + ML Kit)
@@ -277,6 +355,32 @@ RETURNING QTDE
 - **Modo simples**: câmera pausa após cada scan, reativa ao tocar em Escanear
 - **Modo múltiplos** (switch ativo): câmera analisa continuamente com debounce de 1,5s por código
 
+### Flash da Câmera
+
+Botão raio na toolbar do `ScannerActivity` e `RecontagemActivity`. Toque alterna a lanterna da câmera traseira:
+
+```kotlin
+camera.cameraControl.enableTorch(flashLigado)
+```
+
+Estado não persiste entre sessões. Ícone: `res/drawable/ic_flash_on.xml` (vector Material Design). Menu: `res/menu/menu_scanner.xml`.
+
+### EAN-13 vs UPC-A — Variações de Código de Barras
+
+O scanner físico pode retornar 12 dígitos (UPC-A) enquanto o ERP gravou 13 (EAN-13 com zero à esquerda), ou vice-versa. O backend normaliza automaticamente:
+
+```python
+def _barcode_variants(codigo: str) -> list[str]:
+    variantes = [codigo]
+    if len(codigo) == 12:
+        variantes.append("0" + codigo)   # UPC-A → EAN-13
+    elif len(codigo) == 13 and codigo.startswith("0"):
+        variantes.append(codigo[1:])      # EAN-13 → UPC-A
+    return variantes
+```
+
+A query usa `WHERE CODBARRA IN (?, ?)` para encontrar qualquer variante em `PRODUTO_CODBARRA`.
+
 ### Scanner Android — Modo Bluetooth (HID Keyboard)
 
 Leitores Bluetooth operam em modo HID (emulam teclado). O app usa um `EditText` invisível com `requestFocus()` para capturar o input. Um `TextWatcher` detecta o código completo (terminado com `\n`) e dispara o scan automaticamente.
@@ -284,6 +388,26 @@ Leitores Bluetooth operam em modo HID (emulam teclado). O app usa um `EditText` 
 ---
 
 ## Fluxo de Consolidação
+
+```mermaid
+flowchart TD
+    A[POST /inventario/consolidar] --> B[Busca INVENTARIO_TEMP do depósito]
+    B --> C[Consulta CE: SAIDAPRODUTO + SAIDAESTOQUE]
+    C --> D{Divergências ≥ 30%\ne itens ≥ 5?}
+    D -->|Sim| E[HTTP 422\nRecontagem obrigatória]
+    D -->|Não| F{Há divergências\nou edições?}
+    F -->|Sim| G[Valida supervisor\nlogin + senha\ngerente/admin ≠ operador]
+    G --> H{Credenciais OK?}
+    H -->|Não| I[HTTP 403]
+    H -->|Sim| J
+    F -->|Não| J[Lock: STATUS = CONSOLIDANDO\nno INVENTARIO_SESSAO]
+    J --> K[GEN_ID GEN_MOV_PRODUTO\ngera IDINVENTARIO]
+    K --> L[INSERT MOV_PRODUTO\nTIPOMOVIMENTO=5\npor produto]
+    L --> M[Trigger Automec\natualiza MOVIMENTO.QTDEATUAL]
+    M --> N[DELETE INVENTARIO_TEMP]
+    N --> O[STATUS = CONSOLIDADA]
+    O --> P[LOG_INVENTARIO CONSOLIDACAO\n+ relatório .txt em C:/Invec/relatorios/]
+```
 
 `POST /inventario/consolidar`:
 
