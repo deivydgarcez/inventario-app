@@ -181,6 +181,8 @@ class RelatorioActivity : TimeoutActivity() {
                             "⚠ ${resumo.naoContados} produto(s) com estoque não foram contados.$exemplos"
                         binding.tvAvisoNaoContados.visibility = View.VISIBLE
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
                     // Mesmo com falha de rede, habilita Consolidar se já há itens no adapter
@@ -508,6 +510,8 @@ class RelatorioActivity : TimeoutActivity() {
                         Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // BUG-1: verifica se a consolidação ocorreu apesar do timeout de rede
                 var consolidouSilenciosamente = false
@@ -563,6 +567,8 @@ class RelatorioActivity : TimeoutActivity() {
                         } catch (_: Exception) { "Erro ao atualizar quantidade" }
                         Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
