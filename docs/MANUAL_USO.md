@@ -126,16 +126,16 @@ http://192.168.1.31:8000/
 ├─────────────────────────────────────┤
 │                                     │
 │  ┌── ⊞ Selecionar Depósito ──────┐  │  ← botão com borda
-│  └────────────────────────────────┘  │
+│  └───────────────────────────────┘  │
 │                                     │
-│  ╔═════════════════════════════════╗ │
-│  ║                                 ║ │
-│  ║      Iniciar Coleta              ║ │  ← botão laranja grande
-│  ║                                 ║ │     (desabilitado sem deposito)
-│  ╚═════════════════════════════════╝ │
+│  ╔════════════════════════════════╗ │
+│  ║                                ║ │
+│  ║      Iniciar Coleta            ║ │  ← botao laranja grande
+│  ║                                ║ │     (desabilitado sem deposito)
+│  ╚════════════════════════════════╝ │
 │                                     │
-│  ┌── Ver Relatorio ───────────────┐  │  ← botão com borda
-│  └────────────────────────────────┘  │
+│  ┌── Ver Relatorio ──────────────┐  │  ← botao com borda
+│  └───────────────────────────────┘  │
 │                                     │
 │       Modo escuro          ◯        │  ← switch
 │  [ Sair da conta ]  [ Servidor ]    │  ← rodapé
@@ -181,14 +181,14 @@ flowchart LR
 ┌─────────────────────────────────────┐
 │ ← [Depósito]      [Bluetooth][flash]│  ← toolbar preta translúcida
 ├─────────────────────────────────────┤
-│ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │
-│ ▓▓▓▓▓ ┌──────────────────────┐ ▓▓▓ │
-│ ▓▓▓▓▓ │                      │ ▓▓▓ │  ← câmera ao vivo
-│ ▓▓▓▓▓ │  ─────────────────── │ ▓▓▓ │  ← linha guia laranja
-│ ▓▓▓▓▓ │                      │ ▓▓▓ │
-│ ▓▓▓▓▓ └──────────────────────┘ ▓▓▓ │  ← quadro de leitura
-│ ▓▓▓  Pressione ESCANEAR...    ▓▓▓  │
-│ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │
+│ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │
+│ ▓▓▓▓▓ ┌──────────────────────┐ ▓▓▓▓ │
+│ ▓▓▓▓▓ │                      │ ▓▓▓▓ │  ← camera ao vivo
+│ ▓▓▓▓▓ │  ─────────────────── │ ▓▓▓▓ │  ← linha guia laranja
+│ ▓▓▓▓▓ │                      │ ▓▓▓▓ │
+│ ▓▓▓▓▓ └──────────────────────┘ ▓▓▓▓ │  ← quadro de leitura
+│ ▓▓▓   Pressione ESCANEAR...    ▓▓▓  │
+│ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │
 ├─────────────────────────────────────┤
 │ ▌ Nome do último produto bipado     │  ← painel inferior preto
 │   Qtde total: X           N scans   │
@@ -321,7 +321,7 @@ sequenceDiagram
 │ ← Relatório                        │  ← toolbar laranja
 ├─────────────────────────────────────┤
 │ ● Online      12 itens      [⊙]    │  ← barra de status
-│ ← Deslize para excluir · Toque editar│
+│ ← Deslize p/ excluir · Toque editar │
 ├─────────────────────────────────────┤
 │ PRODUTO A                           │
 │ Sist: 10   Contada: 12   Dif: +2   │  ← diferença em verde
@@ -416,15 +416,15 @@ A recontagem permite fazer uma segunda contagem para confirmar divergências ant
 ┌─────────────────────────────────────┐
 │ ← Recontagem (2ª contagem)         │
 ├─────────────────────────────────────┤
-│ ▓▓▓▓▓ ┌──────────────────────┐ ▓▓▓ │
-│ ▓▓▓▓▓ │  ─────────────────── │ ▓▓▓ │  ← câmera idêntica ao scanner
-│ ▓▓▓▓▓ └──────────────────────┘ ▓▓▓ │
+│ ▓▓▓▓▓ ┌──────────────────────┐ ▓▓▓▓ │
+│ ▓▓▓▓▓ │  ─────────────────── │ ▓▓▓▓ │  ← camera identica ao scanner
+│ ▓▓▓▓▓ └──────────────────────┘ ▓▓▓▓ │
 ├─────────────────────────────────────┤
-│ PRODUTO X   1a: 5   2a: ---        │  ← nao bipado na 2a vez
-│ PRODUTO Y   1a: 3   2a:   3        │  ← igual, sem diferenca
-│ PRODUTO Z   1a: 8   2a:   7        │  ← diferente, destacado
+│ PRODUTO X   1a: 5   2a: ---         │  ← nao bipado na 2a vez
+│ PRODUTO Y   1a: 3   2a:   3         │  ← igual, sem diferenca
+│ PRODUTO Z   1a: 8   2a:   7         │  ← diferente, destacado
 │                                     │
-│  [ Escanear ]   [ Digitar código ] │
+│  [ Escanear ]    [ Digitar codigo ] │
 └─────────────────────────────────────┘
 ```
 
