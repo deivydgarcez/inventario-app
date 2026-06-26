@@ -13,7 +13,7 @@ from tkinter import ttk, filedialog, messagebox
 
 SERVICE_NAME    = "InvecAPI"
 SERVICE_DISPLAY = "Invec - API Inventario"
-DEFAULT_DIR     = r"C:\Invec"
+DEFAULT_DIR     = r"C:\Administracao\Invec"
 
 # ── Utilitários ──────────────────────────────────────────────────────────────
 
@@ -85,7 +85,10 @@ class App:
 
         r = 0
         row_label(r, "Diretorio de instalacao:")
-        row_entry(r, self.v_install)
+        dir_fr = ttk.Frame(f)
+        dir_fr.grid(row=r, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
+        ttk.Entry(dir_fr, textvariable=self.v_install, width=36).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(dir_fr, text="...", width=3, command=self._browse_install_dir).pack(side=tk.LEFT, padx=(4, 0))
         r += 1
 
         ttk.Separator(f, orient=tk.HORIZONTAL).grid(row=r, column=0, columnspan=2, sticky=tk.EW, pady=6)
@@ -155,6 +158,14 @@ class App:
                    command=self.root.destroy, width=10).pack(side=tk.LEFT, padx=4)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _browse_install_dir(self):
+        p = filedialog.askdirectory(
+            title="Selecionar pasta de instalacao",
+            initialdir=self.v_install.get() if os.path.exists(self.v_install.get()) else DEFAULT_DIR,
+        )
+        if p:
+            self.v_install.set(os.path.normpath(p))
 
     def _browse_db(self):
         p = filedialog.askopenfilename(

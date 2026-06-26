@@ -9,11 +9,6 @@ FB_HOST = os.getenv("FB_HOST", "localhost")
 FB_DATABASE = os.getenv("FB_DATABASE")
 FB_USER = os.getenv("FB_USER", "SYSDBA")
 FB_PASSWORD = os.getenv("FB_PASSWORD", "masterkey")
-if not os.getenv("FB_PASSWORD") or FB_PASSWORD == "masterkey":
-    print(
-        "[INVEC AVISO] FB_PASSWORD nao configurado no .env — usando senha padrao 'masterkey'. "
-        "Configure FB_PASSWORD no .env se o banco Firebird usar senha diferente."
-    )
 
 
 def _dsn() -> str:
