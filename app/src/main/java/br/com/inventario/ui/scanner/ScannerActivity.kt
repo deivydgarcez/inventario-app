@@ -228,7 +228,7 @@ class ScannerActivity : TimeoutActivity() {
             binding.tvCameraInstruction.visibility = View.VISIBLE
             binding.btnEscanear.visibility = View.VISIBLE
             binding.switchRow.visibility = View.VISIBLE
-            binding.btnTrocarModo.text = "Bluetooth"
+            binding.btnTrocarModo.text = "BT"
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 == PackageManager.PERMISSION_GRANTED
