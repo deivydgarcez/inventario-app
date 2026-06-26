@@ -318,26 +318,26 @@ sequenceDiagram
 
 ```
 ┌─────────────────────────────────────┐
-│ ← Relatório                        │  ← toolbar laranja
+│ ← Relatório                         │  ← toolbar laranja
 ├─────────────────────────────────────┤
-│ ● Online      12 itens      [⊙]    │  ← barra de status
+│ ● Online      12 itens      [⊙]     │  ← barra de status
 │ ← Deslize p/ excluir · Toque editar │
 ├─────────────────────────────────────┤
 │ PRODUTO A                           │
-│ Sist: 10   Contada: 12   Dif: +2   │  ← diferença em verde
+│ Sist: 10   Contada: 12   Dif: +2    │  ← diferença em verde
 ├─────────────────────────────────────┤
 │ PRODUTO B                           │
-│ Sist: 5    Contada: 4    Dif: -1   │  ← diferença em vermelho
+│ Sist: 5    Contada: 4    Dif: -1    │  ← diferença em vermelho
 ├─────────────────────────────────────┤
 │ PRODUTO C                           │
-│ Sist: 8    Contada: 8    Dif:  0   │  ← diferença em cinza
+│ Sist: 8    Contada: 8    Dif:  0    │  ← diferença em cinza
 ├─────────────────────────────────────┤
-│ ⚠ 5 produtos com estoque não foram │  ← faixa vermelha
+│ ⚠ 5 produtos com estoque não foram  │  ← faixa vermelha
 │   contados                          │
 ├─────────────────────────────────────┤
 │ [ Histórico ]     [ Auditoria ]     │
-│ [ ✓ Fazer Recontagem ]             │  ← verde
-│ [ ↑ Sincronizar scans pendentes ]  │  ← só quando offline
+│ [ ✓ Fazer Recontagem ]              │  ← verde
+│ [ ↑ Sincronizar scans pendentes ]   │  ← só quando offline
 │ [    Consolidar Inventário    ]     │  ← laranja
 └─────────────────────────────────────┘
 ```
