@@ -48,7 +48,6 @@ class App:
         self.v_install    = tk.StringVar(value=DEFAULT_DIR)
         self.v_db         = tk.StringVar()
         self.v_host       = tk.StringVar(value="localhost")
-        self.v_port       = tk.StringVar(value="8000")
         self.v_idempresa  = tk.StringVar(value="1")
         self.v_license    = tk.StringVar()
         self.v_status     = tk.StringVar(value="Aguardando...")
@@ -104,9 +103,6 @@ class App:
         r += 1
 
 
-        row_label(r, "Porta da API:")
-        ttk.Entry(f, textvariable=self.v_port, width=8).grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
-        r += 1
 
         row_label(r, "ID da Empresa (IDEMPRESA):")
         ttk.Entry(f, textvariable=self.v_idempresa, width=8).grid(row=r, column=1, sticky=tk.W, padx=(8, 0), pady=4)
@@ -119,8 +115,8 @@ class App:
         ttk.Entry(f, textvariable=self.v_license, width=42).grid(row=r, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
         r += 1
 
-        ttk.Label(f, text="Fornecida pela Pontual Tecnologia. Necessaria para o servidor funcionar.",
-                  font=("Segoe UI", 8), foreground="#888").grid(
+        ttk.Label(f, text="Fornecida pela Pontual Tecnologia. Necessaria para o servidor funcionar corretamente.",
+                  font=("Segoe UI", 8), foreground="#888", wraplength=380).grid(
             row=r, column=1, sticky=tk.W, padx=(8, 0))
         r += 1
 
@@ -181,7 +177,6 @@ class App:
                 mapping = {
                     'FB_DATABASE': self.v_db,
                     'FB_HOST':     self.v_host,
-                    'PORT':        self.v_port,
                     'IDEMPRESA':   self.v_idempresa,
                     'LICENSE_KEY': self.v_license,
                 }
@@ -196,7 +191,7 @@ class App:
     def _refresh_status(self):
         st = service_status()
         if st == 'running':
-            self._set_status(f"Servico RODANDO na porta {self.v_port.get()}.", "#2E7D32")
+            self._set_status("Servico RODANDO na porta 8000.", "#2E7D32")
         elif st == 'stopped':
             self._set_status("Servico instalado mas PARADO. Clique em Reiniciar Servico.", "#E65100")
         else:
@@ -221,7 +216,7 @@ class App:
                 f"FB_HOST={self.v_host.get()}\n"
                 f"FB_USER=SYSDBA\n"
                 f"FB_PASSWORD=masterkey\n"
-                f"PORT={self.v_port.get()}\n"
+                f"PORT=8000\n"
                 f"IDEMPRESA={self.v_idempresa.get() or '1'}\n"
                 f"LICENSE_KEY={self.v_license.get()}\n"
                 f"JWT_SECRET={jwt_secret}\n"
@@ -296,7 +291,7 @@ class App:
             messagebox.showerror("Erro", "Informe a Chave de Licenca.\n\nSolicite a chave para a Pontual Tecnologia.")
             return
         try:
-            porta_int = int(self.v_port.get())
+            porta_int = 8000
             if not (1 <= porta_int <= 65535):
                 raise ValueError()
         except ValueError:
@@ -445,7 +440,7 @@ class App:
     def _test_porta(self) -> str | None:
         """Verifica se a porta já está em uso antes de registrar o serviço."""
         import socket
-        porta = int(self.v_port.get())
+        porta = 8000
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1)
             if s.connect_ex(("127.0.0.1", porta)) == 0:
@@ -457,7 +452,7 @@ class App:
 
     def _install_worker(self):
         install_dir = self.v_install.get()
-        porta = self.v_port.get()
+        porta = "8000"
         try:
             import time as _time
 
