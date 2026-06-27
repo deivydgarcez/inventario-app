@@ -111,11 +111,11 @@ class App:
         ttk.Separator(f, orient=tk.HORIZONTAL).grid(row=r, column=0, columnspan=2, sticky=tk.EW, pady=6)
         r += 1
 
-        row_label(r, "Chave de Licenca:", bold=True)
+        row_label(r, "Chave de Licença:", bold=True)
         ttk.Entry(f, textvariable=self.v_license, width=42).grid(row=r, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
         r += 1
 
-        ttk.Label(f, text="Licenca fornecida pela Pontual Tecnologia.",
+        ttk.Label(f, text="Licença fornecida pela Pontual Tecnologia.",
                   font=("Segoe UI", 8), foreground="#888").grid(
             row=r, column=1, sticky=tk.W, padx=(8, 0))
         r += 1
@@ -288,7 +288,7 @@ class App:
             messagebox.showerror("Erro", "Selecione o caminho do banco de dados Firebird (.FDB).")
             return
         if not self.v_license.get().strip():
-            messagebox.showerror("Erro", "Informe a Chave de Licenca.\n\nSolicite a chave para a Pontual Tecnologia.")
+            messagebox.showerror("Erro", "Informe a Chave de Licença.\n\nSolicite a chave para a Pontual Tecnologia.")
             return
         try:
             porta_int = 8000
@@ -597,7 +597,7 @@ class App:
                     f"Possiveis causas:\n"
                     f"  - Antivirus bloqueou o InvecServidor.exe\n"
                     f"  - Banco de dados inacessivel\n"
-                    f"  - Licenca invalida\n"
+                    f"  - Licença inválida\n"
                     f"  - Erro nas migrations\n\n"
                     f"Verifique: {log_erro}"
                     f"{msg_extra}"
