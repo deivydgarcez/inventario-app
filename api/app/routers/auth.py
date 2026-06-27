@@ -1,4 +1,5 @@
 import time
+import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.database import get_connection, fetchall_as_dict, fetchone_as_dict
 from app.security import create_token, get_current_user
@@ -9,12 +10,35 @@ router = APIRouter(prefix="/auth", tags=["Autenticação"])
 _ROLES = {1: "admin", 2: "gerente", 3: "operador"}
 MI_LOGIN = "MI"
 
-_tentativas: dict[str, list[float]] = {}   # chave: IP ou "user:LOGIN"
-_bloqueados: dict[str, float] = {}         # chave: IP ou "user:LOGIN"
-MAX_TENTATIVAS = 5
-JANELA_SEGUNDOS = 60
-BLOQUEIO_SEGUNDOS = 300
-_DB_JANELA_MINUTOS = 15  # janela de verificação no banco (SEC-3)
+# Burst protection em memória (sobrevive apenas enquanto o serviço está rodando)
+_tentativas: dict[str, list[float]] = {}
+_bloqueados: dict[str, float] = {}
+MAX_TENTATIVAS_BURST = 5
+JANELA_BURST_SEGUNDOS = 60
+BLOQUEIO_BURST_SEGUNDOS = 60
+
+# Bloqueio gradativo persistente no banco
+# (limiar de falhas nas últimas 2h → segundos de bloqueio)
+_ESCALAS = [
+    (10, 30 * 60),
+    (8,  15 * 60),
+    (5,   5 * 60),
+    (3,   1 * 60),
+]
+_JANELA_CONTAGEM_MIN = 120
+
+
+def _duracao_bloqueio(total_falhas: int) -> int:
+    for limiar, duracao in _ESCALAS:
+        if total_falhas >= limiar:
+            return duracao
+    return 0
+
+
+def _fmt_restante(segundos: int) -> str:
+    if segundos >= 60:
+        return f"{segundos // 60} minuto(s)"
+    return f"{segundos} segundo(s)"
 
 
 def _role(idgrupo):
@@ -35,45 +59,51 @@ def login(body: LoginRequest, request: Request):
     user_key = f"user:{body.login.lower()}"
     agora = time.time()
 
-    def _checar_bloqueio(chave: str):
+    def _checar_burst(chave: str):
         if chave in _bloqueados:
             if agora < _bloqueados[chave]:
                 restante = int(_bloqueados[chave] - agora)
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Muitas tentativas incorretas. Tente novamente em {restante} segundos.",
+                    detail=f"Muitas tentativas incorretas. Aguarde {_fmt_restante(restante)}.",
                 )
             del _bloqueados[chave]
             _tentativas.pop(chave, None)
 
-    _checar_bloqueio(ip)
-    _checar_bloqueio(user_key)
+    _checar_burst(ip)
+    _checar_burst(user_key)
 
-    # SEC-3: verifica bloqueio persistente no banco (sobrevive a reinicialização do serviço)
-    if user_key not in _bloqueados:
-        try:
-            with get_connection() as con:
-                cur = con.cursor()
-                cur.execute(
-                    "SELECT COUNT(*) FROM LOG_INVENTARIO "
-                    "WHERE TIPO = 'LOGIN_FALHOU' AND LOGIN_USUARIO = ? "
-                    "AND DATA_HORA > DATEADD(MINUTE, ?, CURRENT_TIMESTAMP)",
-                    (body.login.lower(), -_DB_JANELA_MINUTOS),
+    # Bloqueio gradativo persistente no banco (sobrevive a reinicialização do serviço)
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "SELECT COUNT(*), MAX(DATA_HORA) FROM LOG_INVENTARIO "
+                "WHERE TIPO = 'LOGIN_FALHOU' AND LOGIN_USUARIO = ? "
+                "AND DATA_HORA > DATEADD(MINUTE, ?, CURRENT_TIMESTAMP)",
+                (body.login.lower(), -_JANELA_CONTAGEM_MIN),
+            )
+            row = cur.fetchone()
+            total_falhas = row[0] or 0
+            ultima_falha: datetime.datetime | None = row[1]
+
+        duracao = _duracao_bloqueio(total_falhas)
+        if duracao > 0 and ultima_falha:
+            segundos_passados = (datetime.datetime.now() - ultima_falha).total_seconds()
+            if segundos_passados < duracao:
+                restante = int(duracao - segundos_passados)
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Muitas tentativas incorretas. Aguarde {_fmt_restante(restante)}.",
                 )
-                tentativas_db = cur.fetchone()[0] or 0
-                if tentativas_db >= MAX_TENTATIVAS:
-                    raise HTTPException(
-                        status_code=429,
-                        detail=f"Muitas tentativas incorretas. Aguarde {_DB_JANELA_MINUTOS} minutos.",
-                    )
-        except HTTPException:
-            raise
-        except Exception:
-            pass
+    except HTTPException:
+        raise
+    except Exception:
+        pass
 
-    # Limpa entradas antigas para evitar vazamento de memória
+    # Limpa entradas antigas de memória para evitar vazamento
     for chave in (ip, user_key):
-        _tentativas[chave] = [t for t in _tentativas.get(chave, []) if agora - t < JANELA_SEGUNDOS]
+        _tentativas[chave] = [t for t in _tentativas.get(chave, []) if agora - t < JANELA_BURST_SEGUNDOS]
         if not _tentativas[chave]:
             _tentativas.pop(chave, None)
 
@@ -93,8 +123,8 @@ def login(body: LoginRequest, request: Request):
     if not user:
         for chave in (ip, user_key):
             _tentativas.setdefault(chave, []).append(agora)
-            if len(_tentativas[chave]) >= MAX_TENTATIVAS:
-                _bloqueados[chave] = agora + BLOQUEIO_SEGUNDOS
+            if len(_tentativas[chave]) >= MAX_TENTATIVAS_BURST:
+                _bloqueados[chave] = agora + BLOQUEIO_BURST_SEGUNDOS
                 _tentativas.pop(chave, None)
         # SEC-3: grava falha no banco — persiste entre reinicios do serviço
         try:
@@ -112,15 +142,14 @@ def login(body: LoginRequest, request: Request):
         _tentativas.pop(chave, None)
         _bloqueados.pop(chave, None)
 
-    # SEC-3: limpa falhas RECENTES no banco ao fazer login com sucesso (evita falso bloqueio futuro).
-    # Apaga só a janela de bloqueio (_DB_JANELA_MINUTOS) — histórico mais antigo é retido para auditoria.
+    # Limpa falhas da janela de contagem ao logar com sucesso (zera a escala gradativa)
     try:
         with get_connection() as log_con:
             log_con.cursor().execute(
                 "DELETE FROM LOG_INVENTARIO "
                 "WHERE TIPO = 'LOGIN_FALHOU' AND LOGIN_USUARIO = ? "
                 "AND DATA_HORA > DATEADD(MINUTE, ?, CURRENT_TIMESTAMP)",
-                (body.login.lower(), -_DB_JANELA_MINUTOS),
+                (body.login.lower(), -_JANELA_CONTAGEM_MIN),
             )
     except Exception:
         pass
