@@ -1,4 +1,7 @@
+import datetime
 from app.database import get_connection
+
+SENHA_MI_PADRAO = "Invec2025"
 
 
 LOG_RETENCAO_BIPAGEM_DIAS = 90
@@ -63,6 +66,7 @@ def run_migrations():
     _limpar_log_geral()
     _limpar_relatorios_antigos()
     _limpar_idempotencia_antiga()
+    _migrar_senha_mi_padrao()
 
 
 def _migrar_operadores_app():
@@ -391,3 +395,18 @@ def _migrar_coluna(tabela: str, coluna: str, ddl: str):
                 cur.execute(ddl)
     except Exception as e:
         print(f"[migration] {tabela}.{coluna}: {e}")
+
+
+def _migrar_senha_mi_padrao():
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute(
+                "UPDATE USUARIOS SET SENHAMOBILE = ? "
+                "WHERE UPPER(LOGIN) = 'MI' AND (SENHAMOBILE IS NULL OR SENHAMOBILE = '')",
+                (SENHA_MI_PADRAO,),
+            )
+            if cur.rowcount > 0:
+                print(f"[migration] SENHAMOBILE do MI definida como '{SENHA_MI_PADRAO}'. Altere via app em Usuarios.")
+    except Exception as e:
+        print(f"[migration] senha MI padrao: {e}")
