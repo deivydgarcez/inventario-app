@@ -20,10 +20,13 @@ BLOQUEIO_BURST_SEGUNDOS = 60
 # Bloqueio gradativo persistente no banco
 # (limiar de falhas nas últimas 2h → segundos de bloqueio)
 _ESCALAS = [
-    (10, 30 * 60),
-    (8,  15 * 60),
-    (5,   5 * 60),
-    (3,   1 * 60),
+    (7,  7 * 60),
+    (6,  6 * 60),
+    (5,  5 * 60),
+    (4,  4 * 60),
+    (3,  3 * 60),
+    (2,  2 * 60),
+    (1,  1 * 60),
 ]
 _JANELA_CONTAGEM_MIN = 120
 
