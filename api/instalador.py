@@ -46,7 +46,7 @@ class App:
         self.root.configure(bg="#F5F5F5")
 
         self.v_install    = tk.StringVar(value=DEFAULT_DIR)
-        self.v_db         = tk.StringVar()
+        self.v_db         = tk.StringVar(value=r"C:\Administracao\DB\MIAUTOMEC.FDB")
         self.v_host       = tk.StringVar(value="localhost")
         self.v_idempresa  = tk.StringVar(value="1")
         self.v_license    = tk.StringVar()
@@ -115,8 +115,8 @@ class App:
         ttk.Entry(f, textvariable=self.v_license, width=42).grid(row=r, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
         r += 1
 
-        ttk.Label(f, text="Fornecida pela Pontual Tecnologia. Necessaria para o servidor funcionar corretamente.",
-                  font=("Segoe UI", 8), foreground="#888", wraplength=380).grid(
+        ttk.Label(f, text="Licenca fornecida pela Pontual Tecnologia.",
+                  font=("Segoe UI", 8), foreground="#888").grid(
             row=r, column=1, sticky=tk.W, padx=(8, 0))
         r += 1
 
