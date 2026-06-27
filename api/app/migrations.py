@@ -1,7 +1,7 @@
 import datetime
 from app.database import get_connection
 
-SENHA_MI_PADRAO = "Invec2025"
+SENHA_MI_PADRAO = "!@Pontua"
 
 
 LOG_RETENCAO_BIPAGEM_DIAS = 90
