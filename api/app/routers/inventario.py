@@ -23,8 +23,7 @@ LIMIAR_RECONTAGEM_MINIMO = 5
 
 PASTA_RELATORIOS = r"C:\Invec\relatorios"
 
-# BANCO-4: empresa configurável via .env (não deve vir do cliente)
-IDEMPRESA = int(os.getenv("IDEMPRESA", 1))
+_IDEMPRESA_FALLBACK = int(os.getenv("IDEMPRESA", 1))
 
 # BANCO-1: lock em memória (guarda primário dentro do processo)
 _consolidando: set[int] = set()
@@ -771,6 +770,11 @@ def consolidar_inventario(
             row_user = cur.fetchone()
             idusuario = row_user[0] if row_user else 1
 
+            # Lê IDEMPRESA diretamente do depósito — cada depósito pertence a uma empresa
+            cur.execute("SELECT IDEMPRESA FROM DEPOSITO WHERE CDDEPOSITO = ?", (body.cddeposito,))
+            row_dep = cur.fetchone()
+            idempresa = int(row_dep[0]) if row_dep and row_dep[0] else _IDEMPRESA_FALLBACK
+
             if body.session_id:
                 session_where = "AND IT.SESSION_ID = ?"
                 itens_params = (body.cddeposito, body.session_id)
@@ -1023,7 +1027,6 @@ def consolidar_inventario(
                         "diferenca": qtde_contada - qtdanterior,
                     })
 
-                # BANCO-4: usa IDEMPRESA do servidor (.env), não do cliente
                 if vl_perda_ganho is not None:
                     cur2.execute(
                         "INSERT INTO MOV_PRODUTO "
@@ -1032,7 +1035,7 @@ def consolidar_inventario(
                         "QTDINVENTARIO, QTDANTERIOR, VL_PERDA_GANHO, SIST_ALT) "
                         "VALUES (?, ?, ?, 5, '0000', CURRENT_DATE, 'Ajuste na Tela de Inventário', "
                         "?, ?, ?, ?, ?, ?, ?, ?, ?, 'INV_APP')",
-                        (IDEMPRESA, cdproduto_str, body.cddeposito, fatorconv,
+                        (idempresa, cdproduto_str, body.cddeposito, fatorconv,
                          qtentrada, qtsaida, idusuario, cdunidade, idinventario,
                          qtde_contada, qtdanterior, vl_perda_ganho),
                     )
@@ -1044,7 +1047,7 @@ def consolidar_inventario(
                         "QTDINVENTARIO, QTDANTERIOR, SIST_ALT) "
                         "VALUES (?, ?, ?, 5, '0000', CURRENT_DATE, 'Ajuste na Tela de Inventário', "
                         "?, ?, ?, ?, ?, ?, ?, ?, 'INV_APP')",
-                        (IDEMPRESA, cdproduto_str, body.cddeposito, fatorconv,
+                        (idempresa, cdproduto_str, body.cddeposito, fatorconv,
                          qtentrada, qtsaida, idusuario, cdunidade, idinventario,
                          qtde_contada, qtdanterior),
                     )
