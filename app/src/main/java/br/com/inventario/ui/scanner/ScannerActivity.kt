@@ -58,6 +58,8 @@ class ScannerActivity : TimeoutActivity() {
     @Volatile private var processando = false
     @Volatile private var aguardandoScan = false
 
+    private val barcodeScanner = BarcodeScanning.getClient()
+
     private var scanMode = ScanMode.CAMERA
     private var totalBipagens = 0
 
@@ -303,7 +305,7 @@ class ScannerActivity : TimeoutActivity() {
         val mediaImage = imageProxy.image ?: run { imageProxy.close(); return }
         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
 
-        BarcodeScanning.getClient()
+        barcodeScanner
             .process(image)
             .addOnSuccessListener { barcodes ->
                 val codigo = barcodes.firstOrNull { it.rawValue != null }?.rawValue
@@ -733,5 +735,6 @@ class ScannerActivity : TimeoutActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+        barcodeScanner.close()
     }
 }
