@@ -1,5 +1,86 @@
 # CHANGELOG — Invec
 
+## [1.5.0] — 2026-06-28
+
+### Novas funcionalidades
+
+#### Considerar Entrega — modo de contagem configurável
+
+- **Diálogo ao selecionar depósito**: ao iniciar uma sessão de inventário, o app pergunta se a contagem inclui materiais separados para entrega ("Sim — contar tudo" / "Não — só disponíveis"). A escolha fica salva em `SessionManager` para toda a sessão.
+- **Relatório ajustado**: quando "Sim", o campo **Sistema** já soma `MOVIMENTO.QTDEATUAL + QTDEENTREGA` e exibe `(+X.XX entrega)` ao lado do valor. Quando "Não", mostra apenas o disponível.
+- **Consolidação correta**: o flag é enviado ao servidor no momento de consolidar, garantindo que a quantidade gravada no Automec reflita o modo escolhido.
+- **Fonte dos itens de entrega**: tabela `SAIDAPRODUTO JOIN SAIDAESTOQUE` onde `IDENTREGA NOT IN (0, 9999)`, excluindo pedidos cancelados/entregues — mesma lógica do Delphi (`ChkCalculoEntrega`).
+
+#### Android
+- `MainActivity`: diálogo de modo de contagem após seleção do depósito
+- `SessionManager`: `saveConsiderarEntrega()` / `getConsiderarEntrega()`
+- `ApiService`: parâmetro `considerar_entrega` em `relatorio()`
+- `RelatorioAdapter`: exibe `(+X.XX entrega)` quando aplicável
+- `RelatorioActivity`: passa flag para relatório e consolidação
+- `Models.kt`: `ItemRelatorio.qtde_entrega`; `ConsolidarRequest.considerarEntrega`
+
+#### Backend
+- `schemas.py`: `ItemRelatorio.qtde_entrega`; `ConsolidarRequest.considerar_entrega`
+- `inventario.py`: query SAIDAPRODUTO condicional no relatório e na consolidação; diferença calculada em Python (não mais em SQL)
+
+---
+
+### Correções de bugs
+
+- **Params SQL do relatório**: após remover a coluna `DIFERENCA` do SQL (agora calculada em Python), o tuple `params` ainda tinha um `cddeposito` extra do subquery removido. Corrigido de `(dep, dep, dep, session)` para `(dep, dep, session)`.
+
+---
+
+## [1.4.0] — 2026-06-28
+
+### Correções de bugs
+
+#### Android — Scanner automático congela após ~20 bipagens
+
+- **Causa raiz**: `BarcodeScanning.getClient()` era chamado a cada frame da câmera enquanto `aguardandoScan=true` (~30 fps). Após ~20 bipagens, centenas de instâncias ML Kit acumuladas sem fechar saturavam o pipeline interno e congelavam a leitura.
+- **Fix**: instância `barcodeScanner` criada uma única vez como campo da `ScannerActivity` e fechada em `onDestroy()`, conforme documentação do ML Kit ("reuse the scanner, don't create a new one for each input").
+
+---
+
+## [1.3.3] — 2026-06-28
+
+### Novas funcionalidades
+
+#### Android — Scanner
+
+- **Botão shutter em modo unitário**: botão grande centralizado na tela do scanner para disparar leitura manualmente. Modo múltiplo exibe instrução automática no lugar do botão.
+- Arquivo novo: `res/drawable/ic_scan_shutter.xml`; campo novo em `activity_scanner.xml`
+
+#### Android — Relatório
+
+- **Código interno visível**: campo `Cód. Int.` exibe `CDPRODUTO` ao lado do código de barras em cada item do relatório.
+- **Motivo obrigatório na edição** (fix definitivo): dialog de edição de quantidade não fecha com campo de motivo vazio — `setPositiveButton` sobrescrito após `show()` para validar antes de fechar.
+- **Recontagem 100% opcional**: supervisor não é mais exigido para consolidar quando não há divergências.
+- **Supervisor obrigatório com divergências sem recontagem**: ao consolidar com itens em divergência sem ter feito recontagem, o app exige justificativa mínima de 10 caracteres, que é gravada na auditoria.
+
+#### Android — Recontagem
+
+- **1ª contagem oculta durante escaneamento**: painel lateral e lista ocultam a 1ª contagem enquanto a recontagem está em andamento; resultado final exibe apenas a 2ª contagem com ✓/✗.
+- **Botão −1 por item**: permite corrigir scan duplicado sem reiniciar a recontagem do produto.
+
+#### Android — Auditoria
+
+- **Novo evento `CONSOLID_SEM_RECONTAGEM`**: exibido em roxo na tela de auditoria com a justificativa informada pelo supervisor.
+
+#### Backend
+
+- `ConsolidarRequest`: campo `justificativa_sem_recontagem`
+- `inventario.py`: grava `LOG_INVENTARIO` tipo `CONSOLID_SEM_RECONTAGEM` quando supervisor autoriza consolidação sem recontagem
+
+---
+
+### Correções de bugs
+
+- **Scanner — re-arm em modo múltiplo**: leitura parava após chamada de rede lenta porque `resetarEstado()` rearmava o scanner antes de `processando = false`. Corrigido: re-arm movido para após `processando = false`.
+- **Compilação**: chamada `pedirSupervisor()` sem argumento em `RelatorioActivity` corrigida.
+
+---
+
 ## [1.3.2] — 2026-06-25
 
 ### Novas funcionalidades

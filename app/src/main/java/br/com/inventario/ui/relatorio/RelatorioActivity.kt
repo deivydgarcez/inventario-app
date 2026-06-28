@@ -148,7 +148,8 @@ class RelatorioActivity : TimeoutActivity() {
 
                 try {
                     val api = RetrofitClient.build(session)
-                    val deferRelatorio = async { api.relatorio(dep, sessionId) }
+                    val considerarEntrega = session.getConsiderarEntrega()
+                    val deferRelatorio = async { api.relatorio(dep, sessionId, considerarEntrega) }
                     val deferResumo   = async { api.resumoContagem(dep, sessionId) }
 
                     val respRelatorio = deferRelatorio.await()
@@ -524,6 +525,7 @@ class RelatorioActivity : TimeoutActivity() {
                     recontagemConfirmada      = recontagemConfirmada || session.isSupervisor(),
                     sessionId                 = sessionId,
                     justificativaSemRecontagem = justificativaSemRecontagem,
+                    considerarEntrega         = session.getConsiderarEntrega(),
                 ))
                 if (response.isSuccessful) {
                     recontagemConfirmada = false

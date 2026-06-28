@@ -116,6 +116,12 @@ class SessionManager(val context: Context) {
 
     fun encerrarSession() = prefs.edit { remove(sessionKey()) }
 
+    fun saveConsiderarEntrega(value: Boolean) {
+        prefs.edit { putBoolean("considerar_entrega", value) }
+    }
+
+    fun getConsiderarEntrega(): Boolean = prefs.getBoolean("considerar_entrega", false)
+
     fun logout() {
         val serverUrl = getServerUrl()
         val depositosCache = prefs.getString("depositos_cache", null)

@@ -75,6 +75,7 @@ class ItemRelatorio(BaseModel):
     produto: str
     codigobarra: Optional[str] = None
     qtde_sistema: Optional[float] = None
+    qtde_entrega: Optional[float] = None
     qtde_contada: Optional[float] = None
     diferenca: Optional[float] = None
     operador: Optional[str] = None
@@ -89,6 +90,7 @@ class ConsolidarRequest(BaseModel):
     recontagem_confirmada: bool = False
     session_id: Optional[str] = None
     justificativa_sem_recontagem: Optional[str] = None
+    considerar_entrega: bool = False
 
 
 class ItemHistorico(BaseModel):

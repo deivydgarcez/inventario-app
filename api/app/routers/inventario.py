@@ -605,6 +605,7 @@ def sincronizar_lote(
 def relatorio_inventario(
     cddeposito: int,
     session_id: Optional[str] = Query(default=None),
+    considerar_entrega: bool = Query(default=False),
     current_user: dict = Depends(get_current_user),
 ):
     _verificar_acesso_deposito(current_user, cddeposito)
@@ -613,10 +614,10 @@ def relatorio_inventario(
         cur = con.cursor()
         if session_id:
             session_filter = "AND IT.SESSION_ID = ?"
-            params = (cddeposito, cddeposito, cddeposito, session_id)
+            params = (cddeposito, cddeposito, session_id)
         else:
             session_filter = "AND IT.SESSION_ID IS NULL"
-            params = (cddeposito, cddeposito, cddeposito)
+            params = (cddeposito, cddeposito)
         cur.execute(
             f"""
             SELECT
@@ -629,12 +630,6 @@ def relatorio_inventario(
                      WHERE M2.CDPRODUTO = CAST(P.CDPRODUTO AS VARCHAR(10))
                        AND M2.CDDEPOSITO = ?))   AS QTDE_SISTEMA,
                 IT.QTDE                           AS QTDE_CONTADA,
-                COALESCE(IT.QTDE, 0) - COALESCE(IT.QTDEATUAL_SNAP,
-                    (SELECT FIRST 1 M3.QTDEATUAL
-                     FROM MOVIMENTO M3
-                     WHERE M3.CDPRODUTO = CAST(P.CDPRODUTO AS VARCHAR(10))
-                       AND M3.CDDEPOSITO = ?),
-                    0)                            AS DIFERENCA,
                 IT.OPERADOR
             FROM PRODUTO P
             JOIN INVENTARIO_TEMP IT
@@ -644,7 +639,55 @@ def relatorio_inventario(
             """,
             params,
         )
-        return fetchall_as_dict(cur)
+        rows = fetchall_as_dict(cur)
+
+        # Busca quantidades em entrega (SAIDAPRODUTO com IDENTREGA definido) quando flag ativo
+        qtde_entrega_map: dict[int, float] = {}
+        if considerar_entrega:
+            try:
+                cur.execute(
+                    """
+                    SELECT
+                        CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
+                        SUM(
+                            (COALESCE(B.QTDPRODUTO, 0) - COALESCE(B.QTD_VEND_FUT, 0)
+                             + COALESCE(B.QTD_VEND_FUT_LIB, 0)
+                             - COALESCE(B.QTDELIB, 0)
+                             - COALESCE(B.QTDENTREGAR, 0)
+                             - COALESCE(B.QTDENTCANCELADA, 0)
+                             - COALESCE(B.QTDCARREGADA, 0)) * COALESCE(B.FATORCONV, 1)
+                        ) AS QTDEENTREGA
+                    FROM SAIDAPRODUTO B
+                    JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
+                    WHERE NOT (A.STATUS IN (2, 42))
+                      AND B.STATUSSE <> 9
+                      AND COALESCE(B.IDENTREGA, 0) NOT IN (0, 9999)
+                      AND B.CDDEPOSITO = ?
+                      AND A.DTSAIDA <= CURRENT_DATE
+                    GROUP BY B.CDPRODUTO
+                    """,
+                    (cddeposito,),
+                )
+                for row in fetchall_as_dict(cur):
+                    val = max(0.0, float(row["qtdeentrega"] or 0))
+                    if val > 0:
+                        qtde_entrega_map[row["cdproduto"]] = val
+            except Exception as e:
+                print(f"[relatorio] SAIDAPRODUTO indisponível: {e}")
+
+        result = []
+        for row in rows:
+            cdproduto = row["cdproduto"]
+            qtde_sistema_base = float(row.get("qtde_sistema") or 0)
+            qtde_entrega = qtde_entrega_map.get(cdproduto, 0.0)
+            qtde_sistema_efetivo = qtde_sistema_base + qtde_entrega
+            qtde_contada = float(row.get("qtde_contada") or 0)
+            row["qtde_sistema"] = qtde_sistema_efetivo
+            row["qtde_entrega"] = qtde_entrega if qtde_entrega > 0.001 else None
+            row["diferenca"] = qtde_contada - qtde_sistema_efetivo
+            result.append(row)
+
+        return result
 
 
 @router.get("/resumo/{cddeposito}", response_model=ResumoContagem)
@@ -851,34 +894,35 @@ def consolidar_inventario(
                     pass
 
             qtde_entrega_map: dict[int, float] = {}
-            try:
-                cur.execute(
-                    """
-                    SELECT
-                        CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
-                        SUM(
-                            (COALESCE(B.QTDPRODUTO, 0) - COALESCE(B.QTD_VEND_FUT, 0)
-                             + COALESCE(B.QTD_VEND_FUT_LIB, 0)
-                             - COALESCE(B.QTDELIB, 0)
-                             - COALESCE(B.QTDENTREGAR, 0)
-                             - COALESCE(B.QTDENTCANCELADA, 0)
-                             - COALESCE(B.QTDCARREGADA, 0)) * COALESCE(B.FATORCONV, 1)
-                        ) AS QTDEENTREGA
-                    FROM SAIDAPRODUTO B
-                    JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
-                    WHERE NOT (A.STATUS IN (2, 42))
-                      AND B.STATUSSE <> 9
-                      AND COALESCE(B.IDENTREGA, 0) NOT IN (0, 9999)
-                      AND B.CDDEPOSITO = ?
-                      AND A.DTSAIDA <= CURRENT_DATE
-                    GROUP BY B.CDPRODUTO
-                    """,
-                    (body.cddeposito,),
-                )
-                for row in fetchall_as_dict(cur):
-                    qtde_entrega_map[row["cdproduto"]] = max(0.0, float(row["qtdeentrega"] or 0))
-            except Exception as e:
-                print(f"[consolidar] SAIDAPRODUTO indisponível, ignorando entregas pendentes: {e}")
+            if body.considerar_entrega:
+                try:
+                    cur.execute(
+                        """
+                        SELECT
+                            CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
+                            SUM(
+                                (COALESCE(B.QTDPRODUTO, 0) - COALESCE(B.QTD_VEND_FUT, 0)
+                                 + COALESCE(B.QTD_VEND_FUT_LIB, 0)
+                                 - COALESCE(B.QTDELIB, 0)
+                                 - COALESCE(B.QTDENTREGAR, 0)
+                                 - COALESCE(B.QTDENTCANCELADA, 0)
+                                 - COALESCE(B.QTDCARREGADA, 0)) * COALESCE(B.FATORCONV, 1)
+                            ) AS QTDEENTREGA
+                        FROM SAIDAPRODUTO B
+                        JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
+                        WHERE NOT (A.STATUS IN (2, 42))
+                          AND B.STATUSSE <> 9
+                          AND COALESCE(B.IDENTREGA, 0) NOT IN (0, 9999)
+                          AND B.CDDEPOSITO = ?
+                          AND A.DTSAIDA <= CURRENT_DATE
+                        GROUP BY B.CDPRODUTO
+                        """,
+                        (body.cddeposito,),
+                    )
+                    for row in fetchall_as_dict(cur):
+                        qtde_entrega_map[row["cdproduto"]] = max(0.0, float(row["qtdeentrega"] or 0))
+                except Exception as e:
+                    print(f"[consolidar] SAIDAPRODUTO indisponível, ignorando entregas pendentes: {e}")
 
             divergencias = 0
             for item in itens:

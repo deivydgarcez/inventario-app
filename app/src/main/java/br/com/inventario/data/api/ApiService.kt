@@ -34,6 +34,7 @@ interface ApiService {
     suspend fun relatorio(
         @Path("cddeposito") cddeposito: Int,
         @Query("session_id") sessionId: String? = null,
+        @Query("considerar_entrega") considerarEntrega: Boolean = false,
     ): Response<List<ItemRelatorio>>
 
     @GET("inventario/resumo/{cddeposito}")

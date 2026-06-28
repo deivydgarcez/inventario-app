@@ -65,6 +65,7 @@ data class ItemRelatorio(
     val produto: String,
     val codigobarra: String?,
     val qtde_sistema: Double?,
+    val qtde_entrega: Double? = null,
     val qtde_contada: Double?,
     val diferenca: Double?,
     val operador: String?,
@@ -79,6 +80,7 @@ data class ConsolidarRequest(
     @SerializedName("recontagem_confirmada") val recontagemConfirmada: Boolean = false,
     @SerializedName("session_id") val sessionId: String? = null,
     @SerializedName("justificativa_sem_recontagem") val justificativaSemRecontagem: String? = null,
+    @SerializedName("considerar_entrega") val considerarEntrega: Boolean = false,
 )
 
 data class SupervisorPreAuthRequest(val login: String, val senha: String)

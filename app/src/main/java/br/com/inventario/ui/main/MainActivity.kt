@@ -146,63 +146,82 @@ class MainActivity : TimeoutActivity() {
             .setTitle(titulo)
             .setItems(nomes) { _, index ->
                 val dep = depositos[index]
-
-                // BUG-2: guarda depósito/sessão antigos antes de trocar
-                val oldDepositoId = session.getCdDeposito()
-                val oldSessionId  = if (oldDepositoId != -1 && oldDepositoId != dep.cddeposito)
-                    session.getSessionId() else null
-
-                session.saveDeposito(dep.cddeposito, dep.deposito)
-
-                // Garante sessão ativa para este depósito
-                val sessionId = session.getOuCriarSession()
-
-                atualizarHeader()
-                binding.btnSelecionarDeposito.isEnabled = false
-                binding.btnBipar.isEnabled = false
-
-                lifecycleScope.launch {
-                    try {
-                        val api = RetrofitClient.build(session)
-
-                        // BUG-2: encerra sessão do depósito anterior no servidor (não bloqueia UI em caso de falha)
-                        if (oldSessionId != null && ServerMonitor.isOnline.value) {
-                            try { api.encerrarSessao(oldSessionId) } catch (_: Exception) {}
-                        }
-
-                        if (ServerMonitor.isOnline.value) {
-                            try {
-                                api.iniciarSessao(IniciarSessaoRequest(
-                                    sessionId  = sessionId,
-                                    cddeposito = dep.cddeposito,
-                                    operador   = session.getOperador(),
-                                ))
-                            } catch (_: Exception) { }
-                        }
-
-                        val repo = CatalogoRepository(db, api, session)
-                        repo.sincronizarCatalogo(dep.cddeposito) { baixados, total ->
-                            runOnUiThread {
-                                binding.tvDeposito.text =
-                                    "Depósito: ${dep.deposito} · baixando $baixados/$total..."
-                            }
-                        }
-                    } catch (_: Exception) {
-                        val cached = db.catalogo.count(dep.cddeposito)
-                        runOnUiThread {
-                            if (cached == 0) {
-                                Toast.makeText(this@MainActivity, "Sem conexão — catálogo não baixado", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    } finally {
-                        runOnUiThread {
-                            binding.btnSelecionarDeposito.isEnabled = true
-                            atualizarHeader()
-                        }
-                    }
-                }
+                selecionarDepositoComFlag(dep)
             }
             .show()
+    }
+
+    private fun selecionarDepositoComFlag(dep: Deposito) {
+        AlertDialog.Builder(this)
+            .setTitle("Modo de contagem")
+            .setMessage("Esta contagem inclui materiais separados para entrega?")
+            .setPositiveButton("Sim — contar tudo") { _, _ ->
+                session.saveConsiderarEntrega(true)
+                iniciarDeposito(dep)
+            }
+            .setNegativeButton("Não — só disponíveis") { _, _ ->
+                session.saveConsiderarEntrega(false)
+                iniciarDeposito(dep)
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun iniciarDeposito(dep: Deposito) {
+        // BUG-2: guarda depósito/sessão antigos antes de trocar
+        val oldDepositoId = session.getCdDeposito()
+        val oldSessionId  = if (oldDepositoId != -1 && oldDepositoId != dep.cddeposito)
+            session.getSessionId() else null
+
+        session.saveDeposito(dep.cddeposito, dep.deposito)
+
+        // Garante sessão ativa para este depósito
+        val sessionId = session.getOuCriarSession()
+
+        atualizarHeader()
+        binding.btnSelecionarDeposito.isEnabled = false
+        binding.btnBipar.isEnabled = false
+
+        lifecycleScope.launch {
+            try {
+                val api = RetrofitClient.build(session)
+
+                // BUG-2: encerra sessão do depósito anterior no servidor (não bloqueia UI em caso de falha)
+                if (oldSessionId != null && ServerMonitor.isOnline.value) {
+                    try { api.encerrarSessao(oldSessionId) } catch (_: Exception) {}
+                }
+
+                if (ServerMonitor.isOnline.value) {
+                    try {
+                        api.iniciarSessao(IniciarSessaoRequest(
+                            sessionId  = sessionId,
+                            cddeposito = dep.cddeposito,
+                            operador   = session.getOperador(),
+                        ))
+                    } catch (_: Exception) { }
+                }
+
+                val repo = CatalogoRepository(db, api, session)
+                repo.sincronizarCatalogo(dep.cddeposito) { baixados, total ->
+                    runOnUiThread {
+                        binding.tvDeposito.text =
+                            "Depósito: ${dep.deposito} · baixando $baixados/$total..."
+                    }
+                }
+            } catch (_: Exception) {
+                val cached = db.catalogo.count(dep.cddeposito)
+                runOnUiThread {
+                    if (cached == 0) {
+                        Toast.makeText(this@MainActivity, "Sem conexão — catálogo não baixado", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } finally {
+                runOnUiThread {
+                    binding.btnSelecionarDeposito.isEnabled = true
+                    atualizarHeader()
+                }
+            }
+        }
     }
 
     private fun abrirScanner() {

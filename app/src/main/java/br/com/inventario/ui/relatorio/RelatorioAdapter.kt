@@ -41,7 +41,11 @@ class RelatorioAdapter(
                 append("Cód. Int.: ${item.cdproduto}")
                 if (!item.codigobarra.isNullOrBlank()) append("  •  ${item.codigobarra}")
             }
-            tvSistema.text = "Sistema: ${item.qtde_sistema?.let { "%.2f".format(it) } ?: "N/D"}"
+            tvSistema.text = buildString {
+                append("Sistema: ${item.qtde_sistema?.let { "%.2f".format(it) } ?: "N/D"}")
+                val entrega = item.qtde_entrega ?: 0.0
+                if (entrega > 0.001) append("  (+%.2f entrega)".format(entrega))
+            }
             tvContada.text = "Contada: ${item.qtde_contada?.let { "%.2f".format(it) } ?: "0"}"
             val dif = item.diferenca ?: 0.0
             tvDiferenca.text = "Dif: ${"%.2f".format(dif)}"
