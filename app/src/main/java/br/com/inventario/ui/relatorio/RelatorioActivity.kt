@@ -548,7 +548,7 @@ class RelatorioActivity : TimeoutActivity() {
                     // Servidor exige supervisor (edições desta sessão) — abre dialog automaticamente
                     // Admin/gerente não precisam de outro supervisor, mostra erro genérico se 403
                     if (response.code() == 403 && detail.contains("Supervisor", ignoreCase = true) && !session.isSupervisor()) {
-                        pedirSupervisor(detail)
+                        pedirSupervisor()
                     } else {
                         Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
                     }
