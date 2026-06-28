@@ -103,7 +103,9 @@ class ScannerActivity : TimeoutActivity() {
 
         binding.btnDigitarCodigo.setOnClickListener { digitarManualmente() }
         binding.btnEscanear.setOnClickListener { iniciarScan() }
+        binding.fabEscanear.setOnClickListener { iniciarScan() }
         binding.switchMultiplo.setOnCheckedChangeListener { _, checked ->
+            atualizarModoScan(checked)
             if (checked && !aguardandoScan && !processando && scanMode == ScanMode.CAMERA) {
                 iniciarScan()
             }
@@ -173,6 +175,7 @@ class ScannerActivity : TimeoutActivity() {
         aguardandoScan = true
         binding.btnEscanear.isEnabled = false
         binding.btnEscanear.text = "Aguardando..."
+        binding.fabEscanear.isEnabled = false
         binding.tvStatus.text = "Aponte a câmera para o código de barras"
         binding.tvStatus.visibility = View.VISIBLE
 
@@ -188,7 +191,19 @@ class ScannerActivity : TimeoutActivity() {
     private fun resetarBotaoEscanear() {
         binding.btnEscanear.isEnabled = true
         binding.btnEscanear.text = "Escanear"
+        binding.fabEscanear.isEnabled = true
         if (!processando) binding.tvStatus.visibility = View.GONE
+    }
+
+    private fun atualizarModoScan(multiplo: Boolean) {
+        if (scanMode != ScanMode.CAMERA) return
+        if (multiplo) {
+            binding.fabEscanear.visibility = View.GONE
+            binding.tvCameraInstruction.text = "Modo automático ativo — aponte para o código"
+        } else {
+            binding.fabEscanear.visibility = View.VISIBLE
+            binding.tvCameraInstruction.text = "Toque no botão laranja para escanear"
+        }
     }
 
     private fun digitarManualmente() {
@@ -228,6 +243,7 @@ class ScannerActivity : TimeoutActivity() {
             binding.btnEscanear.visibility = View.VISIBLE
             binding.switchRow.visibility = View.VISIBLE
             invalidateOptionsMenu()
+            atualizarModoScan(binding.switchMultiplo.isChecked)
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 == PackageManager.PERMISSION_GRANTED
@@ -237,6 +253,7 @@ class ScannerActivity : TimeoutActivity() {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 100)
             }
         } else {
+            binding.fabEscanear.visibility = View.GONE
             aguardandoScan = false
             if (flashLigado) {
                 flashLigado = false
@@ -506,12 +523,6 @@ class ScannerActivity : TimeoutActivity() {
         binding.tvLastScanQtd.text = "Total neste produto: ${"%.0f".format(qtd)} un."
         binding.tvScanCounter.text = "$totalBipagens un. contadas"
         binding.tvStatus.visibility = View.GONE
-        if (binding.switchMultiplo.isChecked && scanMode == ScanMode.CAMERA) {
-            lifecycleScope.launch {
-                delay(800)
-                if (!processando) runOnUiThread { iniciarScan() }
-            }
-        }
     }
 
     private fun mostrarErro(msg: String) {
@@ -605,7 +616,17 @@ class ScannerActivity : TimeoutActivity() {
         lifecycleScope.launch {
             if (scanMode == ScanMode.CAMERA) delay(200)
             processando = false
-            runOnUiThread { resetarBotaoEscanear() }
+            runOnUiThread {
+                resetarBotaoEscanear()
+                // Re-arm: só depois de processando=false para evitar que o timer
+                // dispare enquanto a chamada de rede ainda está em curso (bug anterior).
+                if (binding.switchMultiplo.isChecked && scanMode == ScanMode.CAMERA && !aguardandoScan) {
+                    lifecycleScope.launch {
+                        delay(800)
+                        if (!processando && !aguardandoScan) iniciarScan()
+                    }
+                }
+            }
         }
     }
 

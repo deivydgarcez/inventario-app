@@ -1089,6 +1089,18 @@ def consolidar_inventario(
                  body.session_id),
             )
 
+            # Auditoria extra quando supervisor autoriza sem recontagem
+            if body.justificativa_sem_recontagem and divergencias > 0:
+                cur2.execute(
+                    """
+                    INSERT INTO LOG_INVENTARIO
+                        (TIPO, CDDEPOSITO, OPERADOR, LOGIN_USUARIO, MOTIVO, SESSION_ID, DATA_HORA)
+                    VALUES ('CONSOLID_SEM_RECONTAGEM', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (body.cddeposito, body.operador, supervisor_login_validado or current_user.get("login", ""),
+                     body.justificativa_sem_recontagem, body.session_id),
+                )
+
         _salvar_relatorio(
             cddeposito=body.cddeposito,
             operador=body.operador or "",

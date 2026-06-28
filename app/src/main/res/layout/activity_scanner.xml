@@ -188,6 +188,23 @@
 
     </LinearLayout>
 
+    <!-- Botão grande de disparar scan (modo unitário, câmera) -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabEscanear"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:src="@drawable/ic_scan_shutter"
+        android:contentDescription="Escanear"
+        android:visibility="gone"
+        app:backgroundTint="#FFCC5B2A"
+        app:tint="@android:color/white"
+        app:fabCustomSize="80dp"
+        app:maxImageSize="44dp"
+        app:layout_constraintTop_toBottomOf="@id/scanFrame"
+        app:layout_constraintBottom_toTopOf="@+id/rvScanned"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- Mini-lista de itens bipados (acima do painel inferior) -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvScanned"

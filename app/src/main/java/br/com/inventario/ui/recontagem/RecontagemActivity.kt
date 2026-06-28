@@ -86,7 +86,7 @@ class RecontagemActivity : TimeoutActivity() {
         supportActionBar?.title = "Recontagem: ${session.getNomeDeposito()}"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        adapter = RecontagemAdapter(itens)
+        adapter = RecontagemAdapter(itens) { idx -> decrementarItem(idx) }
         binding.recycler.layoutManager = LinearLayoutManager(this)
         binding.recycler.adapter = adapter
 
@@ -427,11 +427,20 @@ class RecontagemActivity : TimeoutActivity() {
         adapter.notifyItemChanged(idx)
         val item = itens[idx]
         val dif = item.qtde2 - (item.item.qtde_contada ?: 0.0)
-        val difStr = if (abs(dif) > 0.001) "  ⚠ Dif: ${"%.0f".format(dif)}" else "  ✓ Confere"
+        // Não exibe o valor da 1ª contagem para evitar influência intencional
+        val status = if (abs(dif) > 0.001) "  ⚠ Divergência detectada" else "  ✓ Confere"
         binding.lastScanPanel.visibility = View.VISIBLE
         binding.tvLastScanNome.text = item.item.produto
-        binding.tvLastScanInfo.text = "2ª contagem: ${"%.0f".format(item.qtde2)} un.$difStr"
+        binding.tvLastScanInfo.text = "2ª contagem: ${"%.0f".format(item.qtde2)} un.$status"
         binding.recycler.scrollToPosition(idx)
+    }
+
+    private fun decrementarItem(idx: Int) {
+        if (itens[idx].qtde2 > 0) {
+            itens[idx].qtde2 -= 1.0
+            adapter.notifyItemChanged(idx)
+            atualizarStatus()
+        }
     }
 
     private fun finalizarRecontagem() {
@@ -451,12 +460,12 @@ class RecontagemActivity : TimeoutActivity() {
             if (divergencias.isNotEmpty()) {
                 append("${divergencias.size} itens com divergência:\n\n")
                 divergencias.take(5).forEach {
-                    val dif = it.qtde2 - (it.item.qtde_contada ?: 0.0)
-                    append("  ${it.item.produto}: 1a=${"%.0f".format(it.item.qtde_contada)}, 2a=${"%.0f".format(it.qtde2)} (${if (dif > 0) "+" else ""}${"%.0f".format(dif)})\n")
+                    // Não exibe valor da 1ª contagem — apenas informa o que foi contado agora
+                    append("  ${it.item.produto}: 2ª contagem = ${"%.0f".format(it.qtde2)} un. ✗\n")
                 }
                 if (divergencias.size > 5) append("  ...e mais ${divergencias.size - 5} itens\n")
             } else {
-                append("\nTodas as contagens conferem!")
+                append("\nTodas as contagens conferem! ✓")
             }
         }
 
@@ -487,7 +496,7 @@ class RecontagemActivity : TimeoutActivity() {
             view.findViewById<MaterialButton>(R.id.btnManter1a).apply {
                 visibility = View.VISIBLE
                 setOnClickListener {
-                    session.setConsolidarBloqueado(session.getCdDeposito(), true)
+                    // Não bloqueia mais — volta ao relatório onde supervisor pode autorizar
                     dialog?.dismiss()
                     finish()
                 }
@@ -602,8 +611,10 @@ class RecontagemActivity : TimeoutActivity() {
         cameraExecutor.shutdown()
     }
 
-    inner class RecontagemAdapter(private val lista: List<ItemRecontagem>) :
-        RecyclerView.Adapter<RecontagemAdapter.VH>() {
+    inner class RecontagemAdapter(
+        private val lista: List<ItemRecontagem>,
+        private val onDecrement: (Int) -> Unit,
+    ) : RecyclerView.Adapter<RecontagemAdapter.VH>() {
 
         inner class VH(val b: ItemRecontagemBinding) : RecyclerView.ViewHolder(b.root)
 
@@ -616,21 +627,26 @@ class RecontagemActivity : TimeoutActivity() {
             val rec = lista[position]
             with(holder.b) {
                 tvProduto.text = rec.item.produto
-                tvContagem1.text = "1ª: ${"%.2f".format(rec.item.qtde_contada ?: 0.0)}"
+                // 1ª contagem oculta durante todo o processo de recontagem
+                tvContagem1.visibility = View.GONE
                 if (rec.qtde2 > 0) {
-                    tvContagem2.text = "2ª: ${"%.2f".format(rec.qtde2)}"
+                    tvContagem2.text = "2ª: ${"%.0f".format(rec.qtde2)}"
                     val dif = rec.qtde2 - (rec.item.qtde_contada ?: 0.0)
-                    tvDiferenca.text = if (abs(dif) > 0.001) "${"%.2f".format(dif)}" else "="
+                    // Mostra apenas se bate ou não, sem revelar o valor da 1ª contagem
+                    tvDiferenca.text = if (abs(dif) > 0.001) "≠" else "="
                     val ok = abs(dif) <= 0.001
                     tvStatus.text = if (ok) "✓" else "✗"
                     tvStatus.setTextColor(if (ok) 0xFF2E7D32.toInt() else 0xFFC62828.toInt())
                     tvDiferenca.setTextColor(if (ok) 0xFF2E7D32.toInt() else 0xFFC62828.toInt())
+                    btnMinus.visibility = View.VISIBLE
+                    btnMinus.setOnClickListener { onDecrement(holder.adapterPosition) }
                 } else {
                     tvContagem2.text = "2ª: ..."
-                    tvDiferenca.text = "..."
+                    tvDiferenca.text = "·"
                     tvStatus.text = "·"
                     tvStatus.setTextColor(0xFF9E9E9E.toInt())
                     tvDiferenca.setTextColor(0xFF9E9E9E.toInt())
+                    btnMinus.visibility = View.GONE
                 }
             }
         }

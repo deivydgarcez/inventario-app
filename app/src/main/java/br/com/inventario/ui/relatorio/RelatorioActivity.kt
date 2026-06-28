@@ -272,7 +272,6 @@ class RelatorioActivity : TimeoutActivity() {
         binding.btnRecontagem.isEnabled = temItens
 
         // Aviso + botão Consolidar
-        val bloqueado = session.isConsolidarBloqueado(session.getCdDeposito())
         when {
             !online -> {
                 binding.tvAvisoBloqueio.text = "⚠ Sem conexão — consolidação indisponível"
@@ -280,11 +279,11 @@ class RelatorioActivity : TimeoutActivity() {
                 binding.tvAvisoBloqueio.visibility = View.VISIBLE
                 binding.btnConsolidar.isEnabled = false
             }
-            bloqueado -> {
-                binding.tvAvisoBloqueio.text = "⚠ Divergências confirmadas na recontagem — peça ao supervisor para autorizar a consolidação"
+            divergencias > 0 && !recontagemConfirmada -> {
+                binding.tvAvisoBloqueio.text = "⚠ $divergencias divergência(s) — recontagem opcional, supervisor obrigatório"
                 binding.tvAvisoBloqueio.setBackgroundColor(0xFFFF8F00.toInt())
                 binding.tvAvisoBloqueio.visibility = View.VISIBLE
-                binding.btnConsolidar.isEnabled = false
+                binding.btnConsolidar.isEnabled = temItens
             }
             else -> {
                 binding.tvAvisoBloqueio.visibility = View.GONE
@@ -309,21 +308,21 @@ class RelatorioActivity : TimeoutActivity() {
         layout.addView(etQtde)
         layout.addView(etMotivo)
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Editar: ${item.produto}")
             .setMessage("Quantidade atual: ${item.qtde_contada?.toInt() ?: 0}")
             .setView(layout)
-            .setPositiveButton("Salvar") { _, _ ->
-                val novaQtde = etQtde.text.toString().toDoubleOrNull() ?: return@setPositiveButton
-                val motivo = etMotivo.text.toString().trim()
-                if (motivo.isEmpty()) {
-                    Toast.makeText(this, "Informe o motivo da alteração", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                editarItemComAuditoria(item, position, novaQtde, motivo)
-            }
+            .setPositiveButton("Salvar", null)
             .setNegativeButton("Cancelar", null)
             .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val novaQtde = etQtde.text.toString().toDoubleOrNull()
+            if (novaQtde == null) { etQtde.error = "Quantidade inválida"; return@setOnClickListener }
+            val motivo = etMotivo.text.toString().trim()
+            if (motivo.isEmpty()) { etMotivo.error = "Obrigatório"; return@setOnClickListener }
+            editarItemComAuditoria(item, position, novaQtde, motivo)
+            dialog.dismiss()
+        }
     }
 
     private fun confirmarRemocao(item: ItemRelatorio, position: Int) {
@@ -382,19 +381,14 @@ class RelatorioActivity : TimeoutActivity() {
             abs(adp.getItem(pos).diferenca ?: 0.0) > 0.001
         }
 
-        val jaRecontou = recontagemConfirmada || session.isSupervisor()
-
         val msg = buildString {
             append("Depósito: ${session.getNomeDeposito()}\n\n")
             append("$total itens para consolidar.\n")
             if (divergencias > 0) {
-                if (jaRecontou) {
-                    append("$divergencias itens ainda com diferença de estoque.")
-                } else {
-                    append("$divergencias itens com diferença de estoque.\n\nFaça a recontagem antes de consolidar para garantir os valores.")
-                }
+                append("$divergencias itens com diferença de estoque.")
+                if (recontagemConfirmada) append("\n\nRecontagem já realizada.")
             } else {
-                append("Sem divergências encontradas. Pode consolidar com segurança.")
+                append("Sem divergências. Pode consolidar com segurança.")
             }
         }
 
@@ -403,34 +397,41 @@ class RelatorioActivity : TimeoutActivity() {
 
         var dialog: AlertDialog? = null
 
-        val btnConsolidarNow = view.findViewById<MaterialButton>(R.id.btnConsolidarNow)
-        if (divergencias > 0 && !jaRecontou) {
+        // Recontagem sempre opcional — mostrar apenas se há divergências e ainda não foi feita
+        if (divergencias > 0 && !recontagemConfirmada) {
             view.findViewById<MaterialButton>(R.id.btnFazerRecontagem).apply {
                 visibility = View.VISIBLE
+                text = "Fazer Recontagem (opcional)"
                 setOnClickListener {
                     dialog?.dismiss()
                     recontarLauncher.launch(Intent(this@RelatorioActivity, RecontagemActivity::class.java))
                 }
             }
-            btnConsolidarNow.text = "Consolidar mesmo assim"
-        } else {
-            btnConsolidarNow.text = "Consolidar agora"
+        }
+
+        val btnConsolidarNow = view.findViewById<MaterialButton>(R.id.btnConsolidarNow)
+        btnConsolidarNow.text = when {
+            divergencias == 0 -> "Consolidar"
+            recontagemConfirmada -> "Consolidar (recontagem feita)"
+            else -> "Consolidar sem recontagem"
         }
 
         btnConsolidarNow.setOnClickListener {
             dialog?.dismiss()
-            if (divergencias > 0 && !jaRecontou) pedirSupervisor() else consolidar(null, null)
+            when {
+                divergencias == 0 -> consolidar(null, null)
+                recontagemConfirmada && session.isSupervisor() -> consolidar(null, null)
+                recontagemConfirmada -> pedirSupervisor()
+                else -> pedirSupervisorComJustificativa()
+            }
         }
         view.findViewById<MaterialButton>(R.id.btnCancelarConsolidar).setOnClickListener { dialog?.dismiss() }
 
-        dialog = MaterialAlertDialogBuilder(this)
-            .setView(view)
-            .setCancelable(true)
-            .create()
+        dialog = MaterialAlertDialogBuilder(this).setView(view).setCancelable(true).create()
         dialog.show()
     }
 
-    private fun pedirSupervisor(mensagem: String = "Há divergências. Um supervisor diferente de você deve autorizar esta consolidação.") {
+    private fun pedirSupervisor() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 16, 48, 0)
@@ -443,24 +444,65 @@ class RelatorioActivity : TimeoutActivity() {
         layout.addView(etLogin)
         layout.addView(etSenha)
 
-        AlertDialog.Builder(this)
+        val d = AlertDialog.Builder(this)
             .setTitle("Autorização do supervisor")
-            .setMessage(mensagem)
+            .setMessage("Recontagem realizada com divergências. Um supervisor deve autorizar.")
             .setView(layout)
-            .setPositiveButton("Autorizar e Consolidar") { _, _ ->
-                val login = etLogin.text.toString().trim()
-                val senha = etSenha.text.toString().trim()
-                when {
-                    login.isEmpty() || senha.isEmpty() ->
-                        Toast.makeText(this, "Informe login e senha do supervisor", Toast.LENGTH_SHORT).show()
-                    login.equals(session.getUsuario(), ignoreCase = true) && session.getRole() == "operador" ->
-                        Toast.makeText(this, "Operadores não podem autorizar a própria consolidação. Chame um gerente.", Toast.LENGTH_LONG).show()
-                    else ->
-                        consolidar(login, senha)
-                }
-            }
+            .setPositiveButton("Consolidar", null)
             .setNegativeButton("Cancelar", null)
             .show()
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val login = etLogin.text.toString().trim()
+            val senha = etSenha.text.toString().trim()
+            when {
+                login.isEmpty() || senha.isEmpty() ->
+                    Toast.makeText(this, "Informe login e senha do supervisor", Toast.LENGTH_SHORT).show()
+                login.equals(session.getUsuario(), ignoreCase = true) && session.getRole() == "operador" ->
+                    Toast.makeText(this, "Operadores não podem autorizar a própria consolidação", Toast.LENGTH_LONG).show()
+                else -> { d.dismiss(); consolidar(login, senha) }
+            }
+        }
+    }
+
+    private fun pedirSupervisorComJustificativa() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 0)
+        }
+        val etLogin = EditText(this).apply { hint = "Login do supervisor" }
+        val etSenha = EditText(this).apply {
+            hint = "Senha do supervisor"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val etJustificativa = EditText(this).apply {
+            hint = "Por que não fará recontagem? (obrigatório)"
+            minLines = 2
+        }
+        layout.addView(etLogin)
+        layout.addView(etSenha)
+        layout.addView(etJustificativa)
+
+        val d = AlertDialog.Builder(this)
+            .setTitle("Consolidar sem recontagem")
+            .setMessage("Há ${(0 until (adapter?.itemCount ?: 0)).count { abs(adapter!!.getItem(it).diferenca ?: 0.0) > 0.001 }} divergências.\n\nInforme o motivo pelo qual a recontagem não será feita — ficará registrado na auditoria.")
+            .setView(layout)
+            .setPositiveButton("Consolidar", null)
+            .setNegativeButton("Cancelar", null)
+            .show()
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val login = etLogin.text.toString().trim()
+            val senha = etSenha.text.toString().trim()
+            val justificativa = etJustificativa.text.toString().trim()
+            when {
+                login.isEmpty() || senha.isEmpty() ->
+                    Toast.makeText(this, "Informe login e senha do supervisor", Toast.LENGTH_SHORT).show()
+                login.equals(session.getUsuario(), ignoreCase = true) && session.getRole() == "operador" ->
+                    Toast.makeText(this, "Operadores não podem autorizar a própria consolidação", Toast.LENGTH_LONG).show()
+                justificativa.length < 10 ->
+                    Toast.makeText(this, "Justificativa muito curta — descreva o motivo com pelo menos 10 caracteres", Toast.LENGTH_LONG).show()
+                else -> { d.dismiss(); consolidar(login, senha, justificativa) }
+            }
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -468,19 +510,20 @@ class RelatorioActivity : TimeoutActivity() {
         return true
     }
 
-    private fun consolidar(supervisorLogin: String?, supervisorSenha: String?) {
+    private fun consolidar(supervisorLogin: String?, supervisorSenha: String?, justificativaSemRecontagem: String? = null) {
         binding.progressBar.visibility = View.VISIBLE
         val sessionId = session.getSessionId()
         lifecycleScope.launch {
             try {
                 val api = RetrofitClient.build(session)
                 val response = api.consolidar(ConsolidarRequest(
-                    cddeposito         = session.getCdDeposito(),
-                    operador           = session.getOperador(),
-                    supervisorLogin    = supervisorLogin,
-                    supervisorSenha    = supervisorSenha,
-                    recontagemConfirmada = recontagemConfirmada || session.isSupervisor(),
-                    sessionId          = sessionId,
+                    cddeposito                = session.getCdDeposito(),
+                    operador                  = session.getOperador(),
+                    supervisorLogin           = supervisorLogin,
+                    supervisorSenha           = supervisorSenha,
+                    recontagemConfirmada      = recontagemConfirmada || session.isSupervisor(),
+                    sessionId                 = sessionId,
+                    justificativaSemRecontagem = justificativaSemRecontagem,
                 ))
                 if (response.isSuccessful) {
                     recontagemConfirmada = false

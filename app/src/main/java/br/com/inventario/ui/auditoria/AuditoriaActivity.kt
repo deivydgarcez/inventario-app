@@ -85,15 +85,19 @@ class AuditoriaActivity : TimeoutActivity() {
             val log = lista[position]
             with(holder.b) {
                 // Tipo com cor
-                tvTipo.text = log.tipo
+                tvTipo.text = when (log.tipo) {
+                    "CONSOLID_SEM_RECONTAGEM" -> "SEM RECONTAGEM"
+                    else -> log.tipo
+                }
                 val cor = when (log.tipo) {
-                    "EDICAO"          -> Color.parseColor("#E65100")  // laranja
-                    "EDICAO_SUSPEITA" -> Color.parseColor("#B71C1C")  // vermelho escuro
-                    "EXCLUSAO"        -> Color.parseColor("#C62828")  // vermelho
-                    "CONSOLIDACAO"    -> Color.parseColor("#1B5E20")  // verde
-                    "ALERTA"          -> Color.parseColor("#F57F17")  // amarelo
-                    "ALERTA_REESCAN"  -> Color.parseColor("#880E4F")  // roxo — padrão de fraude
-                    else              -> Color.parseColor("#37474F")
+                    "EDICAO"                   -> Color.parseColor("#E65100")  // laranja
+                    "EDICAO_SUSPEITA"          -> Color.parseColor("#B71C1C")  // vermelho escuro
+                    "EXCLUSAO"                 -> Color.parseColor("#C62828")  // vermelho
+                    "CONSOLIDACAO"             -> Color.parseColor("#1B5E20")  // verde
+                    "CONSOLID_SEM_RECONTAGEM"  -> Color.parseColor("#4A148C")  // roxo — requer atenção
+                    "ALERTA"                   -> Color.parseColor("#F57F17")  // amarelo
+                    "ALERTA_REESCAN"           -> Color.parseColor("#880E4F")  // roxo escuro
+                    else                       -> Color.parseColor("#37474F")
                 }
                 tvTipo.background.mutate().setTint(cor)
 
@@ -105,8 +109,9 @@ class AuditoriaActivity : TimeoutActivity() {
 
                 // Produto
                 tvProduto.text = log.produto ?: when (log.tipo) {
-                    "CONSOLIDACAO" -> "Consolidação de inventário"
-                    else           -> "Produto #${log.cdproduto}"
+                    "CONSOLIDACAO"            -> "Consolidação de inventário"
+                    "CONSOLID_SEM_RECONTAGEM" -> "Justificativa: ${log.motivo ?: "(sem texto)"}"
+                    else                      -> "Produto #${log.cdproduto}"
                 }
 
                 // Quantidades

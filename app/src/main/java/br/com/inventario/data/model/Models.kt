@@ -78,6 +78,7 @@ data class ConsolidarRequest(
     @SerializedName("supervisor_token") val supervisorToken: String? = null,
     @SerializedName("recontagem_confirmada") val recontagemConfirmada: Boolean = false,
     @SerializedName("session_id") val sessionId: String? = null,
+    @SerializedName("justificativa_sem_recontagem") val justificativaSemRecontagem: String? = null,
 )
 
 data class SupervisorPreAuthRequest(val login: String, val senha: String)

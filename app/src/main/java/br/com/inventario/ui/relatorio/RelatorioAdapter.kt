@@ -37,7 +37,10 @@ class RelatorioAdapter(
         val item = items[position]
         with(holder.binding) {
             tvProduto.text = item.produto
-            tvCodigo.text = item.codigobarra ?: "sem código"
+            tvCodigo.text = buildString {
+                append("Cód. Int.: ${item.cdproduto}")
+                if (!item.codigobarra.isNullOrBlank()) append("  •  ${item.codigobarra}")
+            }
             tvSistema.text = "Sistema: ${item.qtde_sistema?.let { "%.2f".format(it) } ?: "N/D"}"
             tvContada.text = "Contada: ${item.qtde_contada?.let { "%.2f".format(it) } ?: "0"}"
             val dif = item.diferenca ?: 0.0

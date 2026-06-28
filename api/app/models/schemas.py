@@ -88,6 +88,7 @@ class ConsolidarRequest(BaseModel):
     supervisor_token: Optional[str] = None
     recontagem_confirmada: bool = False
     session_id: Optional[str] = None
+    justificativa_sem_recontagem: Optional[str] = None
 
 
 class ItemHistorico(BaseModel):
