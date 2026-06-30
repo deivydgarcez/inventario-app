@@ -21,9 +21,16 @@ _UUID_INVALIDOS = {
     "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
 }
 
+_machine_id_cache: str | None = None  # None = não computado; "" = indisponível
+
 
 def get_machine_id() -> str:
-    """UUID do BIOS da máquina (Windows 10/11). Vazio se indisponível ou inválido."""
+    """UUID do BIOS da máquina (Windows 10/11). Resultado cacheado em memória após a primeira chamada."""
+    global _machine_id_cache
+    if _machine_id_cache is not None:
+        return _machine_id_cache
+
+    result = ""
     # PowerShell CIM — funciona no Windows 10 e 11 (wmic foi removido no Win11)
     try:
         r = subprocess.run(
@@ -33,22 +40,26 @@ def get_machine_id() -> str:
         )
         uid = r.stdout.strip().upper()
         if uid and uid not in _UUID_INVALIDOS and len(uid) >= 32:
-            return uid
+            result = uid
     except Exception:
         pass
     # wmic — fallback para Windows 10 sem PowerShell CIM configurado
-    try:
-        r = subprocess.run(
-            ["wmic", "csproduct", "get", "uuid"],
-            capture_output=True, text=True, timeout=5,
-        )
-        for linha in r.stdout.splitlines():
-            uid = linha.strip().upper()
-            if uid and uid != "UUID" and uid not in _UUID_INVALIDOS and len(uid) >= 32:
-                return uid
-    except Exception:
-        pass
-    return ""
+    if not result:
+        try:
+            r = subprocess.run(
+                ["wmic", "csproduct", "get", "uuid"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for linha in r.stdout.splitlines():
+                uid = linha.strip().upper()
+                if uid and uid != "UUID" and uid not in _UUID_INVALIDOS and len(uid) >= 32:
+                    result = uid
+                    break
+        except Exception:
+            pass
+
+    _machine_id_cache = result
+    return result
 
 
 def validar_licenca() -> dict:

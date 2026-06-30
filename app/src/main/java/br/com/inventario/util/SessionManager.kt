@@ -123,12 +123,16 @@ class SessionManager(val context: Context) {
     fun getConsiderarEntrega(): Boolean = prefs.getBoolean("considerar_entrega", false)
 
     fun logout() {
-        val serverUrl = getServerUrl()
-        val depositosCache = prefs.getString("depositos_cache", null)
+        val serverUrl    = getServerUrl()
+        val depositos    = prefs.getString("depositos_cache", null)
+        val scanMode     = getScanMode()
+        val darkMode     = isDarkMode()
         prefs.edit { clear() }
-        saveServerUrl(serverUrl)
-        if (depositosCache != null) {
-            prefs.edit { putString("depositos_cache", depositosCache) }
+        prefs.edit {
+            putString("server_url", serverUrl)
+            putString("scan_mode",  scanMode)
+            putBoolean("dark_mode", darkMode)
+            if (depositos != null) putString("depositos_cache", depositos)
         }
     }
 }
