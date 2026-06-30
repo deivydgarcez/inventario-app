@@ -163,7 +163,8 @@ class MainActivity : TimeoutActivity() {
                 session.saveConsiderarEntrega(false)
                 iniciarDeposito(dep)
             }
-            .setCancelable(false)
+            .setNeutralButton("Cancelar", null)
+            .setCancelable(true)
             .show()
     }
 

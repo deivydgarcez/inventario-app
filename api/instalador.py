@@ -15,6 +15,27 @@ SERVICE_NAME    = "InvecAPI"
 SERVICE_DISPLAY = "Invec - API Inventario"
 DEFAULT_DIR     = r"C:\Administracao\Invec"
 
+_UUID_INVALIDOS = {
+    "", "TO BE FILLED BY O.E.M.", "NOT APPLICABLE", "NONE", "N/A",
+    "00000000-0000-0000-0000-000000000000",
+    "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
+}
+
+def get_machine_id() -> str:
+    """UUID do BIOS desta máquina — envie à Pontual para vincular a licença."""
+    try:
+        r = subprocess.run(
+            ["wmic", "csproduct", "get", "uuid"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for linha in r.stdout.splitlines():
+            uid = linha.strip().upper()
+            if uid and uid != "UUID" and uid not in _UUID_INVALIDOS and len(uid) >= 32:
+                return uid
+    except Exception:
+        pass
+    return "(nao disponivel)"
+
 # ── Utilitários ──────────────────────────────────────────────────────────────
 
 def is_admin() -> bool:
@@ -41,7 +62,7 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Invec - Instalador do Servidor")
-        self.root.geometry("600x550")
+        self.root.geometry("600x600")
         self.root.resizable(False, False)
         self.root.configure(bg="#F5F5F5")
 
@@ -115,7 +136,21 @@ class App:
         ttk.Entry(f, textvariable=self.v_license, width=42).grid(row=r, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
         r += 1
 
-        ttk.Label(f, text="Licença fornecida pela Pontual Tecnologia.",
+        row_label(r, "ID desta maquina:")
+        mid_frame = ttk.Frame(f)
+        mid_frame.grid(row=r, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
+        mid_frame.columnconfigure(0, weight=1)
+        mid_var = tk.StringVar(value=get_machine_id())
+        mid_entry = ttk.Entry(mid_frame, textvariable=mid_var, state="readonly", width=36)
+        mid_entry.grid(row=0, column=0, sticky=tk.EW)
+        ttk.Button(mid_frame, text="Copiar", width=7,
+                   command=lambda: (self.root.clipboard_clear(),
+                                    self.root.clipboard_append(mid_var.get()),
+                                    self._set_status("ID da maquina copiado para a area de transferencia.")
+                                    )).grid(row=0, column=1, padx=(4, 0))
+        r += 1
+
+        ttk.Label(f, text="Envie o ID desta maquina a Pontual para receber uma licenca vinculada.",
                   font=("Segoe UI", 8), foreground="#888").grid(
             row=r, column=1, sticky=tk.W, padx=(8, 0))
         r += 1
@@ -289,13 +324,6 @@ class App:
             return
         if not self.v_license.get().strip():
             messagebox.showerror("Erro", "Informe a Chave de Licença.\n\nSolicite a chave para a Pontual Tecnologia.")
-            return
-        try:
-            porta_int = 8000
-            if not (1 <= porta_int <= 65535):
-                raise ValueError()
-        except ValueError:
-            messagebox.showerror("Erro", "Porta invalida. Use um numero entre 1 e 65535 (padrao: 8000).")
             return
         if not is_admin():
             messagebox.showerror(
@@ -621,8 +649,13 @@ class App:
         if os.path.exists(install_dir):
             self._write_env(install_dir)
         self._set_status("Reiniciando servico...")
-        subprocess.run(["net", "stop",  SERVICE_NAME], capture_output=True)
-        subprocess.run(["net", "start", SERVICE_NAME], capture_output=True)
+        nssm = os.path.join(install_dir, "nssm.exe")
+        if os.path.exists(nssm):
+            subprocess.run([nssm, "stop",  SERVICE_NAME], capture_output=True)
+            subprocess.run([nssm, "start", SERVICE_NAME], capture_output=True)
+        else:
+            subprocess.run(["net", "stop",  SERVICE_NAME], capture_output=True)
+            subprocess.run(["net", "start", SERVICE_NAME], capture_output=True)
         self.root.after(1500, self._refresh_status)
 
     def _on_uninstall(self):

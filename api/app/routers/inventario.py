@@ -21,7 +21,7 @@ ALERTA_MINIMO   = 10.0
 LIMIAR_RECONTAGEM        = 0.30
 LIMIAR_RECONTAGEM_MINIMO = 5
 
-PASTA_RELATORIOS = r"C:\Invec\relatorios"
+PASTA_RELATORIOS = os.path.join(os.getenv("INVEC_DATA_DIR", r"C:\Invec"), "relatorios")
 
 _IDEMPRESA_FALLBACK = int(os.getenv("IDEMPRESA", 1))
 

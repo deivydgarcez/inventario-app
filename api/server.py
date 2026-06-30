@@ -19,6 +19,9 @@ else:
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
 
+# Diretório de dados (relatórios, logs) = pasta do executável, a menos que overrideado no .env
+os.environ.setdefault("INVEC_DATA_DIR", BASE_DIR)
+
 from app.licenca import validar_licenca
 try:
     info = validar_licenca()

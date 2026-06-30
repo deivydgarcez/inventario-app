@@ -1,4 +1,5 @@
 import datetime
+import os
 from app.database import get_connection
 
 SENHA_MI_PADRAO = "!@Pontua"
@@ -7,7 +8,7 @@ SENHA_MI_PADRAO = "!@Pontua"
 LOG_RETENCAO_BIPAGEM_DIAS = 90
 LOG_RETENCAO_GERAL_DIAS   = 365   # EDICAO, EXCLUSAO, ALERTA, CONSOLIDACAO
 RELATORIOS_RETENCAO_DIAS  = 180
-PASTA_RELATORIOS = r"C:\Invec\relatorios"
+PASTA_RELATORIOS = os.path.join(os.getenv("INVEC_DATA_DIR", r"C:\Invec"), "relatorios")
 
 
 def run_migrations():
