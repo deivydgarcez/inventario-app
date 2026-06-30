@@ -23,6 +23,19 @@ _UUID_INVALIDOS = {
 
 def get_machine_id() -> str:
     """UUID do BIOS desta máquina — envie à Pontual para vincular a licença."""
+    # PowerShell CIM — funciona no Windows 10 e 11 (wmic foi removido no Win11)
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-Command", "(Get-CimInstance -ClassName Win32_ComputerSystemProduct).UUID"],
+            capture_output=True, text=True, timeout=10,
+        )
+        uid = r.stdout.strip().upper()
+        if uid and uid not in _UUID_INVALIDOS and len(uid) >= 32:
+            return uid
+    except Exception:
+        pass
+    # wmic — fallback para Windows 10 sem PowerShell CIM configurado
     try:
         r = subprocess.run(
             ["wmic", "csproduct", "get", "uuid"],

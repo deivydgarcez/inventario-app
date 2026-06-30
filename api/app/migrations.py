@@ -222,7 +222,7 @@ def _limpar_log_geral():
                 "DELETE FROM LOG_INVENTARIO "
                 "WHERE ID IN ("
                 "  SELECT FIRST 10000 ID FROM LOG_INVENTARIO "
-                "  WHERE TIPO NOT IN ('EDICAO_SUSPEITA', 'ALERTA_REESCAN', 'EXCLUSAO', 'CONSOLIDACAO') "
+                "  WHERE TIPO NOT IN ('EDICAO_SUSPEITA', 'ALERTA_REESCAN', 'EXCLUSAO', 'CONSOLIDACAO', 'CONSOLID_SEM_RECONTAGEM') "
                 "  AND DATA_HORA < DATEADD(DAY, ?, CURRENT_TIMESTAMP) "
                 "  ORDER BY DATA_HORA ASC"
                 ")",
