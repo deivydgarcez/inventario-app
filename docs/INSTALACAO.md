@@ -26,14 +26,15 @@ Se aparecer o aviso do Windows (UAC), clique em **Sim**.
 
 | Campo | O que preencher | Exemplo |
 |---|---|---|
+| Diretório de instalação | Pasta onde o servidor será instalado. Use o botão `...` para navegar. | `C:\Administracao\Invec` |
 | Banco de dados Firebird | Caminho completo do `.FDB` do Automec. Use o botão `...` para navegar. | `C:\Automec\Dados\empresa.FDB` |
 | Host Firebird | `localhost` se o banco está na mesma máquina | `localhost` |
-| Usuário Firebird | Normalmente `SYSDBA` | `SYSDBA` |
-| Senha Firebird | Senha do Firebird (padrão de instalação: `masterkey`) | `masterkey` |
-| Porta da API | Porta TCP que o app usará. Padrão `8000`. | `8000` |
 | Chave de Licença | String JWT fornecida pela Pontual Tecnologia. **Obrigatória.** | `eyJhbGciOiJSUzI1NiJ9...` |
+| ID da Máquina | Preenchido automaticamente. Use **Copiar** e envie à Pontual para licença vinculada. | `4C4C4544-...` |
 
 > O caminho do banco pode ser encontrado no Automec em **Arquivo → Configurações → Banco de dados**.
+
+> **Licença vinculada à máquina**: se sua licença foi emitida com vínculo, o servidor só sobe nesta máquina específica. Se trocar o computador servidor, solicite uma nova licença à Pontual Tecnologia informando o **ID da Máquina** do novo equipamento.
 
 ---
 
@@ -94,6 +95,7 @@ O servidor valida a licença **toda vez que é iniciado**. Sem licença válida,
 | `Licenca nao encontrada` | Campo LICENSE_KEY vazio ou ausente no `.env` | Abrir o instalador, colar a chave e clicar em Reiniciar Serviço |
 | `Licenca invalida ou corrompida` | Chave adulterada ou errada | Contatar a Pontual Tecnologia para nova chave |
 | `Licenca expirada em YYYY-MM-DD` | Licença com prazo vencido | Contatar a Pontual Tecnologia para renovar |
+| `Esta licenca pertence a outro equipamento` | Licença vinculada a outra máquina | Solicitar nova licença informando o **ID da Máquina** do instalador |
 
 > Log de licença: `C:\Invec\logs\servico.log` — procure por linhas com `[LICENCA]`.
 

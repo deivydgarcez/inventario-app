@@ -1,5 +1,44 @@
 # CHANGELOG — Invec
 
+## [1.6.0] — 2026-06-30
+
+### Novas funcionalidades
+
+#### Licença vinculada à máquina (machine binding)
+
+- **Campo `machine_id` na licença**: `gerar_licenca.py` agora pede o UUID do BIOS da máquina do cliente (Enter = licença sem vínculo, reutilizável). Se informado, o servidor valida na inicialização e recusa subir em qualquer outra máquina.
+- **Mensagem de erro clara**: se a licença for usada em máquina errada, o servidor exibe a UUID da máquina atual e da licença antes de encerrar.
+- **Instalador exibe o ID da máquina**: campo "ID da Máquina" na tela do instalador com botão "Copiar" — o cliente envia o ID à Pontual para gerar a licença vinculada.
+- **Carregamento em background**: o ID é lido em thread separada para não travar a abertura do instalador.
+
+#### Backend — adaptação automática de `SAIDAPRODUTO`
+
+- `_buscar_qtde_entrega()` detecta e cacheia se a coluna `QTD_VEND_FUT_LIB` existe no banco Automec do cliente. Se ausente (versões mais antigas), usa SQL compatível automaticamente, sem erro e sem reinicialização.
+
+---
+
+### Correções de bugs
+
+#### Backend
+
+- **`get_machine_id()` chamado duas vezes no startup**: quando a licença tem `machine_id`, a função era chamada em `server.py` e depois novamente em `main.py` (lifespan) — dois processos PowerShell desnecessários (~3-6 s extras). Corrigido com cache em memória: segunda chamada retorna imediatamente.
+- **`CONSOLID_SEM_RECONTAGEM` era deletado após 365 dias**: este tipo de log (supervisor bypassa recontagem) não estava na lista de exclusão de `_limpar_log_geral`, sendo apagado como log genérico. Corrigido — agora é permanente, igual a `CONSOLIDACAO` e `EXCLUSAO`.
+- **`PASTA_RELATORIOS` hardcoded como `C:\Invec\relatorios`**: em instalações em `C:\Administracao\Invec\` ou qualquer outro diretório, os relatórios de consolidação eram gravados no caminho errado. Corrigido via variável de ambiente `INVEC_DATA_DIR` definida pelo `server.py` na inicialização.
+- **`SAIDAPRODUTO.QTD_VEND_FUT_LIB` inexistente em Automec antigo**: log de produção mostrava `SQL error code = -206 Column unknown`. A query de entregas pendentes agora usa fallback automático para SQL sem a coluna (`_SQL_ENTREGA_COMPAT`).
+- **PowerShell CIM para leitura do UUID do BIOS**: `wmic` foi removido no Windows 11. `get_machine_id()` agora usa `Get-CimInstance Win32_ComputerSystemProduct` como método primário, com `wmic` como fallback para Windows 10 antigo.
+
+#### Android
+
+- **`selecionarDepositoComFlag` sem botão Cancelar**: o diálogo de "considerar entrega" não tinha como fechar sem escolher uma opção, prendendo o usuário. Corrigido: `.setNeutralButton("Cancelar", null).setCancelable(true)`.
+- **Logout apagava `scan_mode` e `dark_mode`**: ao fazer logout, as preferências de scanner e tema escuro eram perdidas. Corrigido: `SessionManager.logout()` preserva `scan_mode` e `dark_mode` além de `server_url` e `depositos_cache`.
+
+#### Instalador
+
+- **`_on_restart` usava `net stop/start`**: o serviço é registrado pelo NSSM, mas o botão "Reiniciar Serviço" usava `net stop`/`net start`, que funcionam apenas para serviços nativos do Windows. Corrigido: usa `nssm.exe stop/start` quando disponível, com `net` como fallback.
+- **Código morto de validação de porta removido**: bloco em `_on_install` com `porta_int = 8000` hardcoded e bloco `except` inalcançável foram removidos.
+
+---
+
 ## [1.5.0] — 2026-06-28
 
 ### Novas funcionalidades
