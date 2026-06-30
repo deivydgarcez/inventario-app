@@ -85,10 +85,12 @@ class App:
         self.v_idempresa  = tk.StringVar(value="1")
         self.v_license    = tk.StringVar()
         self.v_status     = tk.StringVar(value="Aguardando...")
+        self.v_machine_id = tk.StringVar(value="Identificando...")
 
         self._build_ui()
         self._load_existing_env()
         self.root.after(200, self._refresh_status)
+        threading.Thread(target=self._load_machine_id, daemon=True).start()
 
     # ── Layout ───────────────────────────────────────────────────────────────
 
@@ -153,12 +155,10 @@ class App:
         mid_frame = ttk.Frame(f)
         mid_frame.grid(row=r, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
         mid_frame.columnconfigure(0, weight=1)
-        mid_var = tk.StringVar(value=get_machine_id())
-        mid_entry = ttk.Entry(mid_frame, textvariable=mid_var, state="readonly", width=36)
-        mid_entry.grid(row=0, column=0, sticky=tk.EW)
+        ttk.Entry(mid_frame, textvariable=self.v_machine_id, state="readonly", width=36).grid(row=0, column=0, sticky=tk.EW)
         ttk.Button(mid_frame, text="Copiar", width=7,
                    command=lambda: (self.root.clipboard_clear(),
-                                    self.root.clipboard_append(mid_var.get()),
+                                    self.root.clipboard_append(self.v_machine_id.get()),
                                     self._set_status("ID da maquina copiado para a area de transferencia.")
                                     )).grid(row=0, column=1, padx=(4, 0))
         r += 1
@@ -244,6 +244,10 @@ class App:
             self._set_status("Servico instalado mas PARADO. Clique em Reiniciar Servico.", "#E65100")
         else:
             self._set_status("Servico nao instalado. Configure os campos e clique em Instalar.")
+
+    def _load_machine_id(self):
+        uid = get_machine_id()
+        self.root.after(0, lambda: self.v_machine_id.set(uid))
 
     def _write_env(self, install_dir: str):
         env_path = os.path.join(install_dir, ".env")
