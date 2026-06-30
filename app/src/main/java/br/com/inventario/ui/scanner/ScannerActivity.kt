@@ -478,32 +478,34 @@ class ScannerActivity : TimeoutActivity() {
         atualizarMiniLista(produto.cdproduto, produto.produto, novaQtde)
         mostrarUltimoBipado(produto.produto, novaQtde)
 
-        // 3. Sincronização imediata se online
+        // 3. Sincronização em background — Room já garantiu persistência, próximo scan não espera o servidor
         if (ServerMonitor.isOnline.value) {
-            try {
-                val api = RetrofitClient.build(session)
-                val resp = api.registrarBipagem(BipagemRequest(
-                    cdproduto  = produto.cdproduto,
-                    cddeposito = cddeposito,
-                    qtde       = 1.0,
-                    operador   = session.getOperador(),
-                    deviceId   = session.getDeviceId(),
-                    sessionId  = sessionId,
-                    scanId     = scanId,
-                ))
-                if (resp.isSuccessful) {
-                    db.bipag.marcarSincronizado(rowId)
-                    val alerta = resp.body()?.alerta
-                    if (!alerta.isNullOrBlank()) mostrarAlertaQuantidade(produto.produto, alerta)
-                } else {
-                    val detail = try {
-                        org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
-                    } catch (_: Exception) { "HTTP ${resp.code()}" }
-                    mostrarErro("Bipagem não salva no servidor: $detail")
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val api = RetrofitClient.build(session)
+                    val resp = api.registrarBipagem(BipagemRequest(
+                        cdproduto  = produto.cdproduto,
+                        cddeposito = cddeposito,
+                        qtde       = 1.0,
+                        operador   = session.getOperador(),
+                        deviceId   = session.getDeviceId(),
+                        sessionId  = sessionId,
+                        scanId     = scanId,
+                    ))
+                    if (resp.isSuccessful) {
+                        db.bipag.marcarSincronizado(rowId)
+                        val alerta = resp.body()?.alerta
+                        if (!alerta.isNullOrBlank()) {
+                            withContext(Dispatchers.Main) { mostrarAlertaQuantidade(produto.produto, alerta) }
+                        }
+                    } else if (resp.code() == 409 || resp.code() == 404) {
+                        // Não retentável — marca como sync para SyncManager não loopear
+                        db.bipag.marcarSincronizado(rowId)
+                    }
+                    // outros erros HTTP (5xx) → deixa pendente, SyncManager retenta
+                } catch (_: Exception) {
+                    ServerMonitor.forcePing(session, lifecycleScope)
                 }
-            } catch (_: Exception) {
-                // UX-2: atualiza status de conexão imediatamente sem aguardar o ciclo de 30s
-                ServerMonitor.forcePing(session, lifecycleScope)
             }
         }
 
