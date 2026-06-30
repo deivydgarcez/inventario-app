@@ -121,8 +121,6 @@ class RelatorioActivity : TimeoutActivity() {
                 }
             }
         }
-
-        carregarRelatorio()
     }
 
     override fun onResume() {

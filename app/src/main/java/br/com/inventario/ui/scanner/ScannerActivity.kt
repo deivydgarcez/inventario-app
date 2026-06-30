@@ -382,7 +382,7 @@ class ScannerActivity : TimeoutActivity() {
             var erroRede: Boolean = false
 
             if (ServerMonitor.isOnline.value) {
-                // Online: tenta servidor (conectTimeout agora 5s)
+                // Online: tenta servidor (connectTimeout 3s)
                 try {
                     val api = RetrofitClient.build(session)
                     val response = api.buscarPorBarcode(codigo, cddeposito)
@@ -503,7 +503,8 @@ class ScannerActivity : TimeoutActivity() {
                         db.bipag.marcarSincronizado(rowId)
                     }
                     // outros erros HTTP (5xx) → deixa pendente, SyncManager retenta
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     ServerMonitor.forcePing(session, lifecycleScope)
                 }
             }
