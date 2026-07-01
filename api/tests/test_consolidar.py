@@ -8,7 +8,7 @@ Por que esses testes existem:
 """
 
 import pytest
-from app.routers.inventario import _calcular_delta_estoque
+from app.calc import calcular_delta_estoque as _calcular_delta_estoque
 
 
 # ─── Cenários SEM entrega pendente ───────────────────────────────────────────

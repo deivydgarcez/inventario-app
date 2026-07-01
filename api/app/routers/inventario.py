@@ -12,6 +12,7 @@ from app.models.schemas import (
     ItemRelatorio, ConsolidarRequest, ItemHistorico, LogItem, ResumoContagem,
     LoteBipagemRequest, LoteSyncResponse, SupervisorPreAuthRequest,
 )
+from app.calc import calcular_delta_estoque
 
 router = APIRouter(prefix="/inventario", tags=["Inventário"])
 
@@ -61,53 +62,6 @@ _SQL_ENTREGA_COMPAT = """
       AND B.CDDEPOSITO = ? AND A.DTSAIDA <= CURRENT_DATE
     GROUP BY B.CDPRODUTO
 """
-
-
-def _calcular_delta_estoque(
-    qtde_contada: float,
-    qtde_atual: float,
-    qtdeentrega: float,
-    vlcusto: float,
-) -> tuple[float, float, float, float, float]:
-    """
-    Calcula os campos de movimentação para MOV_PRODUTO a partir dos valores de contagem.
-
-    Retorna: (qtdanterior, qtentrada, qtsaida, vl_perda_ganho, baseline_report)
-
-    - qtdanterior  = MOVIMENTO.QTDEATUAL real (nunca inclui qtdeentrega)
-    - qtentrada    = ganho de estoque disponível
-    - qtsaida      = perda de estoque disponível
-    - vl_perda_ganho = valor financeiro do ajuste
-    - baseline_report = qtde_atual + qtdeentrega (usado no relatório de divergências)
-    """
-    qtdanterior = qtde_atual
-    baseline_report = qtde_atual + qtdeentrega
-
-    if qtdeentrega > 0:
-        effective = qtde_contada - qtdeentrega
-        if effective > qtde_atual:
-            qtentrada = effective - qtde_atual
-            qtsaida   = 0.0
-        elif effective < qtde_atual:
-            qtentrada = 0.0
-            qtsaida   = qtde_atual - effective
-        else:
-            qtentrada = 0.0
-            qtsaida   = 0.0
-        vl_perda_ganho = round((effective - qtde_atual) * vlcusto, 2)
-    else:
-        if qtde_contada > qtde_atual:
-            qtentrada = qtde_contada - qtde_atual
-            qtsaida   = 0.0
-        elif qtde_contada < qtde_atual:
-            qtentrada = 0.0
-            qtsaida   = qtde_atual - qtde_contada
-        else:
-            qtentrada = 0.0
-            qtsaida   = 0.0
-        vl_perda_ganho = round((qtde_contada - qtde_atual) * vlcusto, 2)
-
-    return qtdanterior, qtentrada, qtsaida, vl_perda_ganho, baseline_report
 
 
 def _buscar_qtde_entrega(con, cddeposito: int) -> dict[int, float]:
@@ -1105,7 +1059,7 @@ def consolidar_inventario(
                 qtdeentrega   = qtde_entrega_map.get(cdproduto, 0.0)
 
                 qtdanterior, qtentrada, qtsaida, vl_perda_ganho, baseline_report = \
-                    _calcular_delta_estoque(qtde_contada, qtde_atual, qtdeentrega, vlcusto)
+                    calcular_delta_estoque(qtde_contada, qtde_atual, qtdeentrega, vlcusto)
 
                 if abs(qtde_contada - baseline_report) > 0.001:
                     itens_divergentes.append({
