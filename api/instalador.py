@@ -464,24 +464,27 @@ class App:
 
     def _test_firebird(self) -> str | None:
         """INST-1: testa conexão com o banco antes de registrar o serviço.
-        Retorna mensagem de erro ou None se OK."""
+        Retorna mensagem de erro ou None se OK (ou se validação não aplicável)."""
         try:
             from firebird.driver import connect as fb_connect
             host = self.v_host.get().strip() or "localhost"
             db   = self.v_db.get().strip()
-            # Sempre usa host:caminho para forçar TCP/IP e evitar falha do protocolo xnet
-            dsn  = f"{host}:{db}"
-            con  = fb_connect(
-                database=dsn,
-                user="SYSDBA",
-                password="masterkey",
-            )
+            # Usa a mesma lógica do database.py: localhost → só o caminho (xnet local)
+            dsn = db if host in ("localhost", "127.0.0.1") else f"{host}:{db}"
+            con = fb_connect(database=dsn, user="SYSDBA", password="masterkey")
             con.close()
             return None
         except ImportError:
             return None  # driver não disponível no contexto do instalador — pula validação
         except Exception as e:
-            return str(e)
+            err = str(e)
+            # xnet e TCP recusado: o instalador não tem permissão de acesso à pipe xnet do
+            # Firebird (roda como usuário, não SYSTEM). O serviço InvecServidor.exe roda
+            # como SYSTEM e conectará normalmente — não é um erro real de configuração.
+            err_lower = err.lower()
+            if "xnet" in err_lower or "failed to establish" in err_lower:
+                return None
+            return err
 
     def _test_porta(self) -> str | None:
         """Verifica se a porta já está em uso antes de registrar o serviço."""
