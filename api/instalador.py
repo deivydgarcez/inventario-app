@@ -467,9 +467,10 @@ class App:
         Retorna mensagem de erro ou None se OK."""
         try:
             from firebird.driver import connect as fb_connect
-            host = self.v_host.get().strip()
+            host = self.v_host.get().strip() or "localhost"
             db   = self.v_db.get().strip()
-            dsn  = f"{host}:{db}" if host and host not in ("localhost", "127.0.0.1") else db
+            # Sempre usa host:caminho para forçar TCP/IP e evitar falha do protocolo xnet
+            dsn  = f"{host}:{db}"
             con  = fb_connect(
                 database=dsn,
                 user="SYSDBA",

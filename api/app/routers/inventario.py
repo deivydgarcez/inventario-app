@@ -734,6 +734,96 @@ def relatorio_inventario(
         return result
 
 
+@router.get("/debug/entrega/{cddeposito}")
+def debug_entrega(
+    cddeposito: int,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Diagnóstico: mostra o que há em SAIDAPRODUTO para o depósito,
+    linha a linha, indicando qual filtro exclui cada registro.
+    Remover antes de release em produção.
+    """
+    _verificar_acesso_deposito(current_user, cddeposito)
+
+    SQL_RAW = """
+        SELECT
+            B.NRPEDIDO,
+            CAST(B.CDPRODUTO AS INTEGER)    AS CDPRODUTO,
+            B.QTDPRODUTO,
+            COALESCE(B.QTD_VEND_FUT, 0)    AS QTD_VEND_FUT,
+            COALESCE(B.QTDELIB, 0)          AS QTDELIB,
+            COALESCE(B.QTDENTREGAR, 0)      AS QTDENTREGAR,
+            COALESCE(B.QTDENTCANCELADA, 0)  AS QTDENTCANCELADA,
+            COALESCE(B.QTDCARREGADA, 0)     AS QTDCARREGADA,
+            COALESCE(B.FATORCONV, 1)        AS FATORCONV,
+            COALESCE(B.IDENTREGA, 0)        AS IDENTREGA,
+            B.STATUSSE,
+            B.CDDEPOSITO,
+            A.STATUS                        AS STATUS_SAIDA,
+            A.DTSAIDA,
+            CURRENT_DATE                    AS HOJE
+        FROM SAIDAPRODUTO B
+        JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
+        WHERE B.CDDEPOSITO = ?
+        ORDER BY B.CDPRODUTO, B.NRPEDIDO
+    """
+    with get_connection() as con:
+        cur = con.cursor()
+        try:
+            cur.execute(SQL_RAW, (cddeposito,))
+            rows = fetchall_as_dict(cur)
+        except Exception as e:
+            return {"erro": str(e)}
+
+    diagnostico = []
+    for r in rows:
+        excluido_por = []
+        if r["status_saida"] in (2, 42):
+            excluido_por.append(f"STATUS_SAIDA={r['status_saida']} (entregue/cancelado)")
+        if r["statusse"] == 9:
+            excluido_por.append("STATUSSE=9 (item cancelado)")
+        if r["identrega"] in (0, 9999):
+            excluido_por.append(f"IDENTREGA={r['identrega']} (sem rota de entrega)")
+        if r["dtsaida"] and r["dtsaida"] > r["hoje"]:
+            excluido_por.append(f"DTSAIDA={r['dtsaida']} > HOJE (entrega futura)")
+
+        qtde_bruta = (
+            (r["qtdproduto"] or 0)
+            - (r["qtd_vend_fut"] or 0)
+            - (r["qtdelib"] or 0)
+            - (r["qtdentregar"] or 0)
+            - (r["qtdentcancelada"] or 0)
+            - (r["qtdcarregada"] or 0)
+        ) * (r["fatorconv"] or 1)
+
+        diagnostico.append({
+            "cdproduto":    r["cdproduto"],
+            "nrpedido":     r["nrpedido"],
+            "identrega":    r["identrega"],
+            "statusse":     r["statusse"],
+            "status_saida": r["status_saida"],
+            "dtsaida":      str(r["dtsaida"]) if r["dtsaida"] else None,
+            "hoje":         str(r["hoje"]),
+            "qtde_bruta":   round(float(qtde_bruta), 3),
+            "passa_filtro": len(excluido_por) == 0 and qtde_bruta > 0,
+            "excluido_por": excluido_por,
+        })
+
+    resumo_por_produto: dict[int, float] = {}
+    for d in diagnostico:
+        if d["passa_filtro"]:
+            cd = d["cdproduto"]
+            resumo_por_produto[cd] = resumo_por_produto.get(cd, 0.0) + d["qtde_bruta"]
+
+    return {
+        "cddeposito": cddeposito,
+        "total_linhas_saidaproduto": len(diagnostico),
+        "produtos_com_entrega_ativa": resumo_por_produto,
+        "linhas": diagnostico,
+    }
+
+
 @router.get("/resumo/{cddeposito}", response_model=ResumoContagem)
 def resumo_contagem(
     cddeposito: int,
