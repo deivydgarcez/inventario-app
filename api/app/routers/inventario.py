@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from app.database import get_connection, fetchall_as_dict, fetchone_as_dict
 from app.security import get_current_user
 from app.models.schemas import (
@@ -44,8 +44,7 @@ _SQL_ENTREGA = """
     FROM SAIDAPRODUTO B
     JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
     WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9
-      AND COALESCE(B.IDENTREGA, 0) NOT IN (0, 9999)
-      AND B.CDDEPOSITO = ? AND A.DTSAIDA <= CURRENT_DATE
+      AND B.CDDEPOSITO = ?
     GROUP BY B.CDPRODUTO
 """
 
@@ -58,8 +57,7 @@ _SQL_ENTREGA_COMPAT = """
     FROM SAIDAPRODUTO B
     JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
     WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9
-      AND COALESCE(B.IDENTREGA, 0) NOT IN (0, 9999)
-      AND B.CDDEPOSITO = ? AND A.DTSAIDA <= CURRENT_DATE
+      AND B.CDDEPOSITO = ?
     GROUP BY B.CDPRODUTO
 """
 
@@ -736,15 +734,17 @@ def relatorio_inventario(
 
 @router.get("/debug/entrega/{cddeposito}")
 def debug_entrega(
+    request: Request,
     cddeposito: int,
-    current_user: dict = Depends(get_current_user),
 ):
     """
-    Diagnóstico: mostra o que há em SAIDAPRODUTO para o depósito,
-    linha a linha, indicando qual filtro exclui cada registro.
-    Remover antes de release em produção.
+    Diagnóstico sem login: só aceita chamada de localhost (127.0.0.1).
+    Mostra o que há em SAIDAPRODUTO para o depósito, linha a linha,
+    indicando qual filtro exclui cada registro e o valor bruto da fórmula.
     """
-    _verificar_acesso_deposito(current_user, cddeposito)
+    client_ip = request.client.host if request.client else ""
+    if client_ip not in ("127.0.0.1", "::1", "localhost"):
+        raise HTTPException(status_code=403, detail="Acesso permitido apenas de localhost")
 
     SQL_RAW = """
         SELECT
