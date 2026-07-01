@@ -356,7 +356,7 @@ def _migrar_log_data_hora_timestamp():
             if row and row[0] == 12:  # 12 = DATE, 35 = TIMESTAMP
                 cur.execute("ALTER TABLE LOG_INVENTARIO ALTER DATA_HORA TYPE TIMESTAMP")
     except Exception as e:
-        print(f"[migration] LOG_INVENTARIO DATA_HORA→TIMESTAMP: {e}")
+        print(f"[migration] LOG_INVENTARIO DATA_HORA->TIMESTAMP: {e}")
 
 
 def _limpar_idempotencia_antiga():

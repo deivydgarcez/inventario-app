@@ -1425,7 +1425,7 @@ def editar_bipagem(
         reducao = (float(qtde_antes) - body.qtde) / float(qtde_antes)
         if reducao > 0.30 and (current_user.get("idgrupo") or 3) == 3:
             tipo_log = "EDICAO_SUSPEITA"
-            motivo_extra = f" [ALERTA: operador reduziu {reducao:.0%} da quantidade ({qtde_antes:.0f}→{body.qtde:.0f})]"
+            motivo_extra = f" [ALERTA: operador reduziu {reducao:.0%} da quantidade ({qtde_antes:.0f}->{body.qtde:.0f})]"
 
     _registrar_log(
         tipo_log,
