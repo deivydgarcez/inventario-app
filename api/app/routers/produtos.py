@@ -36,13 +36,13 @@ def buscar_por_barcode(
                 P.CDPRODUTO,
                 P.PRODUTO,
                 P.CODIGOBARRA,
-                M.QTDEATUAL
+                M.QTDEATUAL,
+                P.INATIVO
             FROM PRODUTO P
             LEFT JOIN MOVIMENTO M
                 ON M.CDPRODUTO = CAST(P.CDPRODUTO AS VARCHAR(10))
                AND M.CDDEPOSITO = ?
             WHERE P.CODIGOBARRA IN ({placeholders})
-              AND (P.INATIVO IS NULL OR P.INATIVO = 0)
             """,
             (cddeposito, *variants),
         )
@@ -55,14 +55,14 @@ def buscar_por_barcode(
                     P.CDPRODUTO,
                     P.PRODUTO,
                     PC.CODBARRA AS CODIGOBARRA,
-                    M.QTDEATUAL
+                    M.QTDEATUAL,
+                    P.INATIVO
                 FROM PRODUTO_CODBARRA PC
                 JOIN PRODUTO P ON P.CDPRODUTO = PC.CDPRODUTO
                 LEFT JOIN MOVIMENTO M
                     ON M.CDPRODUTO = CAST(P.CDPRODUTO AS VARCHAR(10))
                    AND M.CDDEPOSITO = ?
                 WHERE PC.CODBARRA IN ({placeholders})
-                  AND (P.INATIVO IS NULL OR P.INATIVO = 0)
                 """,
                 (cddeposito, *variants),
             )
@@ -72,6 +72,12 @@ def buscar_por_barcode(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Produto com código de barras '{codigo}' não encontrado",
+        )
+
+    if produto.get("inativo") == -1:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Produto inativo",
         )
 
     return produto

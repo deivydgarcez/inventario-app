@@ -401,7 +401,10 @@ class ScannerActivity : TimeoutActivity() {
                             }
                         }
                         response.code() == 404 -> {
-                            mostrarErro("Produto não encontrado: $codigo")
+                            val detail = try {
+                                org.json.JSONObject(response.errorBody()?.string() ?: "").getString("detail")
+                            } catch (_: Exception) { "Produto não encontrado: $codigo" }
+                            mostrarErro(detail)
                             resetarEstado()
                             return@launch
                         }
