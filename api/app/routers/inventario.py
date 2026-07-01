@@ -1057,19 +1057,24 @@ def consolidar_inventario(
                 nome_produto  = item["produto"] or f"#{cdproduto}"
                 qtdeentrega   = qtde_entrega_map.get(cdproduto, 0.0)
 
-                qtdanterior = qtde_atual + qtdeentrega
+                # QTDANTERIOR no MOV_PRODUTO = MOVIMENTO.QTDEATUAL atual (disponível).
+                # NÃO inclui qtdeentrega — a entrega já está subtraída do MOVIMENTO no Automec.
+                qtdanterior = qtde_atual
 
                 if qtdeentrega > 0:
-                    if qtde_contada > qtde_atual:
-                        qtentrada = qtde_contada - qtde_atual
-                        qtsaida   = qtdeentrega
-                    elif qtde_contada < qtde_atual:
+                    # Usuário contou disponível + entrega. A correção de MOVIMENTO considera
+                    # apenas a parte disponível: effective = contado - entrega.
+                    effective = qtde_contada - qtdeentrega
+                    if effective > qtde_atual:
+                        qtentrada = effective - qtde_atual
+                        qtsaida   = 0.0
+                    elif effective < qtde_atual:
                         qtentrada = 0.0
-                        qtsaida   = (qtde_atual - qtde_contada) + qtdeentrega
+                        qtsaida   = qtde_atual - effective
                     else:
                         qtentrada = 0.0
-                        qtsaida   = qtdeentrega
-                    vl_perda_ganho = None
+                        qtsaida   = 0.0
+                    vl_perda_ganho = round((effective - qtde_atual) * vlcusto, 2)
                 else:
                     if qtde_contada > qtde_atual:
                         qtentrada = qtde_contada - qtde_atual
@@ -1082,12 +1087,14 @@ def consolidar_inventario(
                         qtsaida   = 0.0
                     vl_perda_ganho = round((qtde_contada - qtde_atual) * vlcusto, 2)
 
-                if abs(qtde_contada - qtdanterior) > 0.001:
+                # Para relatório e divergência, usa a baseline completa (disponível + entrega)
+                baseline_report = qtde_atual + qtdeentrega
+                if abs(qtde_contada - baseline_report) > 0.001:
                     itens_divergentes.append({
                         "produto": nome_produto,
-                        "qtde_sistema": qtdanterior,
+                        "qtde_sistema": baseline_report,
                         "qtde_contada": qtde_contada,
-                        "diferenca": qtde_contada - qtdanterior,
+                        "diferenca": qtde_contada - baseline_report,
                     })
 
                 if vl_perda_ganho is not None:

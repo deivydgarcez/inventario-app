@@ -1,5 +1,15 @@
 # CHANGELOG — Invec
 
+## [1.6.1] — 2026-07-01
+
+### Correções de bugs
+
+#### Backend — Consolidar Entrega
+
+- **CRÍTICO — `QTDANTERIOR` incorreto na consolidação com "Contar Tudo"** (`inventario.py`): quando `considerar_entrega = True`, o campo `QTDANTERIOR` gravado em `MOV_PRODUTO` incluía a quantidade de entrega (`qtde_atual + qtdeentrega`), fazendo o trigger do Automec calcular um baseline errado e ajustar `MOVIMENTO` para o total físico (ex.: 10) em vez de manter o disponível (ex.: 6). Corrigido: `QTDANTERIOR = qtde_atual` sempre (MOVIMENTO.QTDEATUAL real). O delta de MOVIMENTO agora é calculado sobre `effective = qtde_contada - qtdeentrega`, que reflete apenas a parte disponível contada.
+
+---
+
 ## [1.6.0] — 2026-06-30
 
 ### Novas funcionalidades
