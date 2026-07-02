@@ -404,7 +404,11 @@ class ScannerActivity : TimeoutActivity() {
                             val detail = try {
                                 org.json.JSONObject(response.errorBody()?.string() ?: "").getString("detail")
                             } catch (_: Exception) { "Produto não encontrado: $codigo" }
-                            mostrarErro(detail)
+                            if (detail == "Produto inativo") {
+                                withContext(Dispatchers.Main) { mostrarProdutoInativo() }
+                            } else {
+                                mostrarErro(detail)
+                            }
                             resetarEstado()
                             return@launch
                         }
@@ -522,6 +526,14 @@ class ScannerActivity : TimeoutActivity() {
             .setTitle("Quantidade suspeita")
             .setMessage("$nomeProduto\n\n$alerta")
             .setPositiveButton("Entendi", null)
+            .show()
+    }
+
+    private fun mostrarProdutoInativo() {
+        AlertDialog.Builder(this)
+            .setTitle("Produto Inativo")
+            .setMessage("Este produto está inativo no sistema e não pode ser bipado.")
+            .setPositiveButton("OK", null)
             .show()
     }
 

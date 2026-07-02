@@ -31,9 +31,11 @@ _consolidando: set[int] = set()
 _consolidando_lock = threading.Lock()
 
 # ─── helper SAIDAPRODUTO: adapta ao schema do Automec instalado ──────────────
-# QTD_VEND_FUT_LIB não existe em versões antigas do Automec; detecta uma vez e cacheia.
-_saidaproduto_tem_qtd_fut_lib: bool | None = None
+# Detecta automaticamente qual nivel de colunas existe, uma unica vez por processo.
+# Niveis: "full" (tem QTD_VEND_FUT_LIB) / "compat" (tem QTD_VEND_FUT) / "minimal" (sem ambos)
+_saidaproduto_nivel: str | None = None
 
+# Nivel 1: Automec recente — tem QTD_VEND_FUT e QTD_VEND_FUT_LIB
 _SQL_ENTREGA = """
     SELECT CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
         SUM((COALESCE(B.QTDPRODUTO, 0) - COALESCE(B.QTD_VEND_FUT, 0)
@@ -48,6 +50,7 @@ _SQL_ENTREGA = """
     GROUP BY B.CDPRODUTO
 """
 
+# Nivel 2: Automec medio — tem QTD_VEND_FUT mas nao QTD_VEND_FUT_LIB
 _SQL_ENTREGA_COMPAT = """
     SELECT CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
         SUM((COALESCE(B.QTDPRODUTO, 0) - COALESCE(B.QTD_VEND_FUT, 0)
@@ -61,13 +64,27 @@ _SQL_ENTREGA_COMPAT = """
     GROUP BY B.CDPRODUTO
 """
 
+# Nivel 3: Automec antigo — nao tem QTD_VEND_FUT nem QTD_VEND_FUT_LIB
+_SQL_ENTREGA_MINIMAL = """
+    SELECT CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
+        SUM((COALESCE(B.QTDPRODUTO, 0)
+             - COALESCE(B.QTDELIB, 0) - COALESCE(B.QTDENTREGAR, 0)
+             - COALESCE(B.QTDENTCANCELADA, 0) - COALESCE(B.QTDCARREGADA, 0)
+            ) * COALESCE(B.FATORCONV, 1)) AS QTDEENTREGA
+    FROM SAIDAPRODUTO B
+    JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
+    WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9
+      AND B.CDDEPOSITO = ?
+    GROUP BY B.CDPRODUTO
+"""
+
 
 def _buscar_qtde_entrega(con, cddeposito: int) -> dict[int, float]:
     """
-    Retorna mapa cdproduto → qtde em entrega (SAIDAPRODUTO com IDENTREGA ativo).
-    Detecta automaticamente se QTD_VEND_FUT_LIB existe neste Automec e cacheia o resultado.
+    Retorna mapa cdproduto -> qtde em entrega pendente no deposito.
+    Detecta automaticamente qual variante SQL o Automec suporta (3 niveis) e cacheia.
     """
-    global _saidaproduto_tem_qtd_fut_lib
+    global _saidaproduto_nivel
 
     def _executar(sql: str) -> dict[int, float]:
         c = con.cursor()
@@ -79,23 +96,33 @@ def _buscar_qtde_entrega(con, cddeposito: int) -> dict[int, float]:
                 resultado[row["cdproduto"]] = val
         return resultado
 
-    if _saidaproduto_tem_qtd_fut_lib is False:
+    if _saidaproduto_nivel == "full":
+        return _executar(_SQL_ENTREGA)
+    if _saidaproduto_nivel == "compat":
         return _executar(_SQL_ENTREGA_COMPAT)
+    if _saidaproduto_nivel == "minimal":
+        return _executar(_SQL_ENTREGA_MINIMAL)
 
+    # Deteccao na primeira chamada — cascata pelos 3 niveis
     try:
         resultado = _executar(_SQL_ENTREGA)
-        _saidaproduto_tem_qtd_fut_lib = True
+        _saidaproduto_nivel = "full"
         return resultado
     except Exception:
-        if _saidaproduto_tem_qtd_fut_lib is None:
-            try:
-                resultado = _executar(_SQL_ENTREGA_COMPAT)
-                _saidaproduto_tem_qtd_fut_lib = False
-                print("[inventario] SAIDAPRODUTO.QTD_VEND_FUT_LIB ausente neste Automec — calculo adaptado")
-                return resultado
-            except Exception as e2:
-                raise e2
-        raise
+        pass
+
+    try:
+        resultado = _executar(_SQL_ENTREGA_COMPAT)
+        _saidaproduto_nivel = "compat"
+        print("[inventario] SAIDAPRODUTO: QTD_VEND_FUT_LIB ausente, usando nivel compat")
+        return resultado
+    except Exception:
+        pass
+
+    resultado = _executar(_SQL_ENTREGA_MINIMAL)
+    _saidaproduto_nivel = "minimal"
+    print("[inventario] SAIDAPRODUTO: QTD_VEND_FUT ausente, usando nivel minimal")
+    return resultado
 
 # SEC-2: tokens de pré-autenticação de supervisor {token: {login, idgrupo, expires}}
 _supervisor_tokens: dict[str, dict] = {}
@@ -1052,6 +1079,7 @@ def consolidar_inventario(
                 divergencias >= LIMIAR_RECONTAGEM_MINIMO
                 and (divergencias / total) >= LIMIAR_RECONTAGEM
                 and not body.recontagem_confirmada
+                and not body.justificativa_sem_recontagem
                 and not is_supervisor
             ):
                 raise HTTPException(
@@ -1227,7 +1255,7 @@ def consolidar_inventario(
                     """
                     INSERT INTO LOG_INVENTARIO
                         (TIPO, CDDEPOSITO, OPERADOR, LOGIN_USUARIO, MOTIVO, SESSION_ID, DATA_HORA)
-                    VALUES ('CONSOLID_SEM_RECONTAGEM', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    VALUES ('SEM_RECONTAGEM', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     """,
                     (body.cddeposito, body.operador, supervisor_login_validado or current_user.get("login", ""),
                      body.justificativa_sem_recontagem, body.session_id),

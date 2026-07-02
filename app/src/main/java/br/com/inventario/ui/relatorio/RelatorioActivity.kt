@@ -48,6 +48,7 @@ class RelatorioActivity : TimeoutActivity() {
     private var recontagemConfirmada = false
     private var consolidarAposCarregar = false
     private var skipNextResume = false
+    private var perguntouEntrega = false
 
     private val recontarLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -126,7 +127,28 @@ class RelatorioActivity : TimeoutActivity() {
     override fun onResume() {
         super.onResume()
         if (skipNextResume) { skipNextResume = false; return }
-        carregarRelatorio()
+        if (!perguntouEntrega) {
+            perguntouEntrega = true
+            perguntarConsiderarEntrega()
+        } else {
+            carregarRelatorio()
+        }
+    }
+
+    private fun perguntarConsiderarEntrega() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Produtos para entrega")
+            .setMessage("Há itens no estoque que já estão separados para entrega ao cliente.\n\nDeseja que a contagem ignore esses itens, considerando só o que fica na loja?")
+            .setCancelable(false)
+            .setPositiveButton("Sim, ignorar") { _, _ ->
+                session.saveConsiderarEntrega(true)
+                carregarRelatorio()
+            }
+            .setNegativeButton("Não, contar tudo") { _, _ ->
+                session.saveConsiderarEntrega(false)
+                carregarRelatorio()
+            }
+            .show()
     }
 
     private fun carregarRelatorio() {
