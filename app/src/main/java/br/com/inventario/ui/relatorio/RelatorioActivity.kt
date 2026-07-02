@@ -48,7 +48,7 @@ class RelatorioActivity : TimeoutActivity() {
     private var recontagemConfirmada = false
     private var consolidarAposCarregar = false
     private var skipNextResume = false
-    private var perguntouEntrega = false
+    // perguntouEntrega é persistido no SessionManager para sobreviver à recriação da Activity
 
     private val recontarLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -127,8 +127,7 @@ class RelatorioActivity : TimeoutActivity() {
     override fun onResume() {
         super.onResume()
         if (skipNextResume) { skipNextResume = false; return }
-        if (!perguntouEntrega) {
-            perguntouEntrega = true
+        if (!session.getPerguntouEntrega()) {
             perguntarConsiderarEntrega()
         } else {
             carregarRelatorio()
@@ -141,11 +140,11 @@ class RelatorioActivity : TimeoutActivity() {
             .setMessage("Há itens no estoque que já estão separados para entrega ao cliente.\n\nDeseja que a contagem ignore esses itens, considerando só o que fica na loja?")
             .setCancelable(false)
             .setPositiveButton("Sim, ignorar") { _, _ ->
-                session.saveConsiderarEntrega(true)
+                session.saveConsiderarEntrega(false)
                 carregarRelatorio()
             }
             .setNegativeButton("Não, contar tudo") { _, _ ->
-                session.saveConsiderarEntrega(false)
+                session.saveConsiderarEntrega(true)
                 carregarRelatorio()
             }
             .show()

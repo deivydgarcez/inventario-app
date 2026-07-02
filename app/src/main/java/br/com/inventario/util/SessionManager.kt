@@ -117,10 +117,15 @@ class SessionManager(val context: Context) {
     fun encerrarSession() = prefs.edit { remove(sessionKey()) }
 
     fun saveConsiderarEntrega(value: Boolean) {
-        prefs.edit { putBoolean("considerar_entrega", value) }
+        prefs.edit {
+            putBoolean("considerar_entrega", value)
+            putBoolean("perguntou_entrega", true)
+        }
     }
 
     fun getConsiderarEntrega(): Boolean = prefs.getBoolean("considerar_entrega", false)
+
+    fun getPerguntouEntrega(): Boolean = prefs.getBoolean("perguntou_entrega", false)
 
     fun logout() {
         val serverUrl    = getServerUrl()
