@@ -30,47 +30,11 @@ _IDEMPRESA_FALLBACK = int(os.getenv("IDEMPRESA", 1))
 _consolidando: set[int] = set()
 _consolidando_lock = threading.Lock()
 
-# ─── helper SAIDAPRODUTO: adapta ao schema do Automec instalado ──────────────
-# Detecta automaticamente qual nivel de colunas existe, uma unica vez por processo.
-# Niveis: "full" (tem QTD_VEND_FUT_LIB) / "compat" (tem QTD_VEND_FUT) / "minimal" (sem ambos)
-_saidaproduto_nivel: str | None = None
-
-# Nivel 1: Automec recente — tem QTD_VEND_FUT e QTD_VEND_FUT_LIB
+# ─── helper SAIDAPRODUTO ─────────────────────────────────────────────────────
+# QTDENTREGAR = quantidade pendente de entrega por item de pedido (campo direto do Automec).
 _SQL_ENTREGA = """
     SELECT CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
-        SUM((COALESCE(B.QTDPRODUTO, 0) - COALESCE(B.QTD_VEND_FUT, 0)
-             + COALESCE(B.QTD_VEND_FUT_LIB, 0)
-             - COALESCE(B.QTDELIB, 0) - COALESCE(B.QTDENTREGAR, 0)
-             - COALESCE(B.QTDENTCANCELADA, 0) - COALESCE(B.QTDCARREGADA, 0)
-            ) * COALESCE(B.FATORCONV, 1)) AS QTDEENTREGA
-    FROM SAIDAPRODUTO B
-    JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
-    WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9
-      AND B.CDDEPOSITO = ?
-    GROUP BY B.CDPRODUTO
-"""
-
-# Nivel 2: Automec medio — tem QTD_VEND_FUT mas nao QTD_VEND_FUT_LIB
-_SQL_ENTREGA_COMPAT = """
-    SELECT CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
-        SUM((COALESCE(B.QTDPRODUTO, 0) - COALESCE(B.QTD_VEND_FUT, 0)
-             - COALESCE(B.QTDELIB, 0) - COALESCE(B.QTDENTREGAR, 0)
-             - COALESCE(B.QTDENTCANCELADA, 0) - COALESCE(B.QTDCARREGADA, 0)
-            ) * COALESCE(B.FATORCONV, 1)) AS QTDEENTREGA
-    FROM SAIDAPRODUTO B
-    JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
-    WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9
-      AND B.CDDEPOSITO = ?
-    GROUP BY B.CDPRODUTO
-"""
-
-# Nivel 3: Automec antigo — nao tem QTD_VEND_FUT nem QTD_VEND_FUT_LIB
-_SQL_ENTREGA_MINIMAL = """
-    SELECT CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
-        SUM((COALESCE(B.QTDPRODUTO, 0)
-             - COALESCE(B.QTDELIB, 0) - COALESCE(B.QTDENTREGAR, 0)
-             - COALESCE(B.QTDENTCANCELADA, 0) - COALESCE(B.QTDCARREGADA, 0)
-            ) * COALESCE(B.FATORCONV, 1)) AS QTDEENTREGA
+        SUM(COALESCE(B.QTDENTREGAR, 0) * COALESCE(B.FATORCONV, 1)) AS QTDEENTREGA
     FROM SAIDAPRODUTO B
     JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
     WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9
@@ -80,48 +44,14 @@ _SQL_ENTREGA_MINIMAL = """
 
 
 def _buscar_qtde_entrega(con, cddeposito: int) -> dict[int, float]:
-    """
-    Retorna mapa cdproduto -> qtde em entrega pendente no deposito.
-    Detecta automaticamente qual variante SQL o Automec suporta (3 niveis) e cacheia.
-    """
-    global _saidaproduto_nivel
-
-    def _executar(sql: str) -> dict[int, float]:
-        c = con.cursor()
-        c.execute(sql, (cddeposito,))
-        resultado: dict[int, float] = {}
-        for row in fetchall_as_dict(c):
-            val = max(0.0, float(row["qtdeentrega"] or 0))
-            if val > 0:
-                resultado[row["cdproduto"]] = val
-        return resultado
-
-    if _saidaproduto_nivel == "full":
-        return _executar(_SQL_ENTREGA)
-    if _saidaproduto_nivel == "compat":
-        return _executar(_SQL_ENTREGA_COMPAT)
-    if _saidaproduto_nivel == "minimal":
-        return _executar(_SQL_ENTREGA_MINIMAL)
-
-    # Deteccao na primeira chamada — cascata pelos 3 niveis
-    try:
-        resultado = _executar(_SQL_ENTREGA)
-        _saidaproduto_nivel = "full"
-        return resultado
-    except Exception:
-        pass
-
-    try:
-        resultado = _executar(_SQL_ENTREGA_COMPAT)
-        _saidaproduto_nivel = "compat"
-        print("[inventario] SAIDAPRODUTO: QTD_VEND_FUT_LIB ausente, usando nivel compat")
-        return resultado
-    except Exception:
-        pass
-
-    resultado = _executar(_SQL_ENTREGA_MINIMAL)
-    _saidaproduto_nivel = "minimal"
-    print("[inventario] SAIDAPRODUTO: QTD_VEND_FUT ausente, usando nivel minimal")
+    """Retorna mapa cdproduto -> qtde pendente de entrega no depósito."""
+    c = con.cursor()
+    c.execute(_SQL_ENTREGA, (cddeposito,))
+    resultado: dict[int, float] = {}
+    for row in fetchall_as_dict(c):
+        val = float(row["qtdeentrega"] or 0)
+        if val > 0:
+            resultado[row["cdproduto"]] = val
     return resultado
 
 # SEC-2: tokens de pré-autenticação de supervisor {token: {login, idgrupo, expires}}
@@ -810,19 +740,8 @@ def debug_entrega(
             excluido_por.append(f"STATUS_SAIDA={r['status_saida']} (entregue/cancelado)")
         if r["statusse"] == 9:
             excluido_por.append("STATUSSE=9 (item cancelado)")
-        if r["identrega"] in (0, 9999):
-            excluido_por.append(f"IDENTREGA={r['identrega']} (sem rota de entrega)")
-        if r["dtsaida"] and r["dtsaida"] > r["hoje"]:
-            excluido_por.append(f"DTSAIDA={r['dtsaida']} > HOJE (entrega futura)")
 
-        qtde_bruta = (
-            (r["qtdproduto"] or 0)
-            - (r["qtd_vend_fut"] or 0)
-            - (r["qtdelib"] or 0)
-            - (r["qtdentregar"] or 0)
-            - (r["qtdentcancelada"] or 0)
-            - (r["qtdcarregada"] or 0)
-        ) * (r["fatorconv"] or 1)
+        qtde_bruta = float(r["qtdentregar"] or 0) * float(r["fatorconv"] or 1)
 
         diagnostico.append({
             "cdproduto":    r["cdproduto"],
@@ -832,7 +751,8 @@ def debug_entrega(
             "status_saida": r["status_saida"],
             "dtsaida":      str(r["dtsaida"]) if r["dtsaida"] else None,
             "hoje":         str(r["hoje"]),
-            "qtde_bruta":   round(float(qtde_bruta), 3),
+            "qtdentregar":  float(r["qtdentregar"] or 0),
+            "qtde_bruta":   round(qtde_bruta, 3),
             "passa_filtro": len(excluido_por) == 0 and qtde_bruta > 0,
             "excluido_por": excluido_por,
         })
