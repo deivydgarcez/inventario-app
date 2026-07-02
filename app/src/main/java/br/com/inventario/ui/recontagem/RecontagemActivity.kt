@@ -262,7 +262,7 @@ class RecontagemActivity : TimeoutActivity() {
                 var erroHttp = false
                 try {
                     val api = RetrofitClient.build(session)
-                    val resp = api.relatorio(session.getCdDeposito(), session.getSessionId())
+                    val resp = api.relatorio(session.getCdDeposito(), session.getSessionId(), session.getConsiderarEntrega())
                     if (resp.isSuccessful) {
                         popularItens(resp.body() ?: emptyList())
                         carregouOnline = true
