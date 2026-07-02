@@ -136,15 +136,15 @@ class RelatorioActivity : TimeoutActivity() {
 
     private fun perguntarConsiderarEntrega() {
         MaterialAlertDialogBuilder(this)
-            .setTitle("Produtos para entrega")
-            .setMessage("Há itens no estoque que já estão separados para entrega ao cliente.\n\nDeseja que a contagem ignore esses itens, considerando só o que fica na loja?")
+            .setTitle("Você bipou os itens separados para entrega?")
+            .setMessage("Há produtos no estoque que já estão separados para entregar a clientes.\n\nSe você bipou tudo (inclusive esses itens), escolha \"Sim, bipei tudo\".\nSe você deixou esses itens de fora e contou só o disponível para venda, escolha \"Não, só o disponível\".")
             .setCancelable(false)
-            .setPositiveButton("Sim, ignorar") { _, _ ->
-                session.saveConsiderarEntrega(false)
+            .setPositiveButton("Sim, bipei tudo") { _, _ ->
+                session.saveConsiderarEntrega(true)
                 carregarRelatorio()
             }
-            .setNegativeButton("Não, contar tudo") { _, _ ->
-                session.saveConsiderarEntrega(true)
+            .setNegativeButton("Não, só o disponível") { _, _ ->
+                session.saveConsiderarEntrega(false)
                 carregarRelatorio()
             }
             .show()
