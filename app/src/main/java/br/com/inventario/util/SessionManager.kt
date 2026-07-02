@@ -127,6 +127,13 @@ class SessionManager(val context: Context) {
 
     fun getPerguntouEntrega(): Boolean = prefs.getBoolean("perguntou_entrega", false)
 
+    fun resetEntregaFlag() {
+        prefs.edit {
+            remove("considerar_entrega")
+            remove("perguntou_entrega")
+        }
+    }
+
     fun logout() {
         val serverUrl    = getServerUrl()
         val depositos    = prefs.getString("depositos_cache", null)

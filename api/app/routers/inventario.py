@@ -33,7 +33,7 @@ _consolidando_lock = threading.Lock()
 # ─── helper SAIDAPRODUTO ─────────────────────────────────────────────────────
 # QTDENTREGAR = quantidade pendente de entrega por item de pedido (campo direto do Automec).
 _SQL_ENTREGA = """
-    SELECT CAST(B.CDPRODUTO AS INTEGER) AS CDPRODUTO,
+    SELECT B.CDPRODUTO,
         SUM(COALESCE(B.QTDENTREGAR, 0) * COALESCE(B.FATORCONV, 1)) AS QTDEENTREGA
     FROM SAIDAPRODUTO B
     JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
@@ -48,12 +48,18 @@ def _buscar_qtde_entrega(con, cddeposito: int) -> dict[int, float]:
     c = con.cursor()
     c.execute(_SQL_ENTREGA, (cddeposito,))
     resultado: dict[int, float] = {}
+    ignorados = 0
     for row in fetchall_as_dict(c):
+        try:
+            cdprod = int(row["cdproduto"])
+        except (ValueError, TypeError):
+            ignorados += 1
+            continue  # ignora códigos não-numéricos (ex: "729#")
         val = float(row["qtdeentrega"] or 0)
         if val > 0:
-            resultado[row["cdproduto"]] = val
+            resultado[cdprod] = val
     exemplos = list(resultado.items())[:3]
-    print(f"[entrega] dep={cddeposito} produtos_com_entrega={len(resultado)} exemplos={exemplos}")
+    print(f"[entrega] dep={cddeposito} produtos_com_entrega={len(resultado)} ignorados={ignorados} exemplos={exemplos}")
     return resultado
 
 # SEC-2: tokens de pré-autenticação de supervisor {token: {login, idgrupo, expires}}

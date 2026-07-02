@@ -146,25 +146,8 @@ class MainActivity : TimeoutActivity() {
             .setTitle(titulo)
             .setItems(nomes) { _, index ->
                 val dep = depositos[index]
-                selecionarDepositoComFlag(dep)
-            }
-            .show()
-    }
-
-    private fun selecionarDepositoComFlag(dep: Deposito) {
-        AlertDialog.Builder(this)
-            .setTitle("Modo de contagem")
-            .setMessage("Esta contagem inclui materiais separados para entrega?")
-            .setPositiveButton("Sim — contar tudo") { _, _ ->
-                session.saveConsiderarEntrega(true)
                 iniciarDeposito(dep)
             }
-            .setNegativeButton("Não — só disponíveis") { _, _ ->
-                session.saveConsiderarEntrega(false)
-                iniciarDeposito(dep)
-            }
-            .setNeutralButton("Cancelar", null)
-            .setCancelable(true)
             .show()
     }
 
@@ -174,6 +157,9 @@ class MainActivity : TimeoutActivity() {
         val oldSessionId  = if (oldDepositoId != -1 && oldDepositoId != dep.cddeposito)
             session.getSessionId() else null
 
+        if (oldDepositoId != dep.cddeposito) {
+            session.resetEntregaFlag()
+        }
         session.saveDeposito(dep.cddeposito, dep.deposito)
 
         // Garante sessão ativa para este depósito
