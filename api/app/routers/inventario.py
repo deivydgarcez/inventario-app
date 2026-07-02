@@ -52,6 +52,8 @@ def _buscar_qtde_entrega(con, cddeposito: int) -> dict[int, float]:
         val = float(row["qtdeentrega"] or 0)
         if val > 0:
             resultado[row["cdproduto"]] = val
+    exemplos = list(resultado.items())[:3]
+    print(f"[entrega] dep={cddeposito} produtos_com_entrega={len(resultado)} exemplos={exemplos}")
     return resultado
 
 # SEC-2: tokens de pré-autenticação de supervisor {token: {login, idgrupo, expires}}
@@ -666,13 +668,15 @@ def relatorio_inventario(
         )
         rows = fetchall_as_dict(cur)
 
-        # Busca quantidades em entrega (SAIDAPRODUTO com IDENTREGA definido) quando flag ativo
         qtde_entrega_map: dict[int, float] = {}
         if considerar_entrega:
+            print(f"[entrega] relatorio dep={cddeposito} session={session_id} considerar_entrega=True")
             try:
                 qtde_entrega_map = _buscar_qtde_entrega(con, cddeposito)
             except Exception as e:
-                print(f"[relatorio] SAIDAPRODUTO indisponível: {e}")
+                print(f"[entrega] ERRO ao buscar SAIDAPRODUTO dep={cddeposito}: {e}")
+        else:
+            print(f"[entrega] relatorio dep={cddeposito} considerar_entrega=False (sem ajuste)")
 
         result = []
         for row in rows:
@@ -976,10 +980,13 @@ def consolidar_inventario(
 
             qtde_entrega_map: dict[int, float] = {}
             if body.considerar_entrega:
+                print(f"[entrega] consolidar dep={body.cddeposito} session={body.session_id} considerar_entrega=True total_itens={total}")
                 try:
                     qtde_entrega_map = _buscar_qtde_entrega(con, body.cddeposito)
                 except Exception as e:
-                    print(f"[consolidar] SAIDAPRODUTO indisponível, ignorando entregas pendentes: {e}")
+                    print(f"[entrega] ERRO ao buscar SAIDAPRODUTO dep={body.cddeposito}: {e}")
+            else:
+                print(f"[entrega] consolidar dep={body.cddeposito} considerar_entrega=False")
 
             divergencias = 0
             for item in itens:
@@ -1095,6 +1102,8 @@ def consolidar_inventario(
                 operador_item = item.get("operador") or body.operador or ""
                 nome_produto  = item["produto"] or f"#{cdproduto}"
                 qtdeentrega   = qtde_entrega_map.get(cdproduto, 0.0)
+                if qtdeentrega > 0:
+                    print(f"[entrega] produto={cdproduto} qtde_contada={qtde_contada} qtde_atual={qtde_atual} qtdeentrega={qtdeentrega} effective={qtde_contada - qtdeentrega:.2f}")
 
                 qtdanterior, qtentrada, qtsaida, vl_perda_ganho, baseline_report = \
                     calcular_delta_estoque(qtde_contada, qtde_atual, qtdeentrega, vlcusto)
