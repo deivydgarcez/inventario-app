@@ -31,10 +31,22 @@ _consolidando: set[int] = set()
 _consolidando_lock = threading.Lock()
 
 # ─── helper SAIDAPRODUTO ─────────────────────────────────────────────────────
-# QTDENTREGAR = quantidade pendente de entrega por item de pedido (campo direto do Automec).
+# Replica a fórmula do Automec (uCadInventarioList / LerArquivoColetor):
+#   QTDEENTREGA = QTDEENTREGAS - QTDELIBERADA - QTDEENTREGAR - QTDECANCELADA - QTDECARREGADA
+# Equivalente direto via SAIDAPRODUTO:
+#   (QTDPRODUTO - QTD_VEND_FUT + QTD_VEND_FUT_LIB) - QTDELIB - QTDENTREGAR - QTDENTCANCELADA - QTDCARREGADA
 _SQL_ENTREGA = """
     SELECT B.CDPRODUTO,
-        SUM(COALESCE(B.QTDENTREGAR, 0) * COALESCE(B.FATORCONV, 1)) AS QTDEENTREGA
+        SUM(
+            (COALESCE(B.QTDPRODUTO, 0)
+             - COALESCE(B.QTD_VEND_FUT, 0)
+             + COALESCE(B.QTD_VEND_FUT_LIB, 0)
+             - COALESCE(B.QTDELIB, 0)
+             - COALESCE(B.QTDENTREGAR, 0)
+             - COALESCE(B.QTDENTCANCELADA, 0)
+             - COALESCE(B.QTDCARREGADA, 0)
+            ) * COALESCE(B.FATORCONV, 1)
+        ) AS QTDEENTREGA
     FROM SAIDAPRODUTO B
     JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
     WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9

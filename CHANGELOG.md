@@ -1,5 +1,15 @@
 # CHANGELOG — Invec
 
+## [1.6.2] — 2026-07-03
+
+### Correções de bugs
+
+#### Backend — Fórmula de entrega pendente
+
+- **Fórmula de `QTDEENTREGA` corrigida** (`inventario.py`): a fórmula anterior usava apenas `QTDENTREGAR` como proxy da quantidade em entrega pendente, mas esse campo no Automec é subtraído — não é o resultado final. A fórmula agora replica exatamente a lógica do Automec (`uCadInventarioList / LerArquivoColetor`): `(QTDPRODUTO - QTD_VEND_FUT + QTD_VEND_FUT_LIB) - QTDELIB - QTDENTREGAR - QTDENTCANCELADA - QTDCARREGADA`, que representa a quantidade comprometida para entrega ainda não liberada, carregada ou cancelada.
+
+---
+
 ## [1.6.1] — 2026-07-01
 
 ### Correções de bugs
