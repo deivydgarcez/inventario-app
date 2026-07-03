@@ -555,6 +555,7 @@ class RelatorioActivity : TimeoutActivity() {
                         withContext(Dispatchers.IO) { db.bipag.deleteAllDaSessao(sessionId) }
                     }
                     session.encerrarSession()
+                    session.resetEntregaFlag()
 
                     val body = response.body()
                     val inv = body?.idinventario?.let { " (Inv. nº $it)" } ?: ""
