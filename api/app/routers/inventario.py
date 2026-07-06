@@ -714,8 +714,12 @@ def relatorio_inventario(
         result = []
         for row in rows:
             cdproduto = row["cdproduto"]
+            try:
+                cdproduto_int = int(cdproduto)
+            except (TypeError, ValueError):
+                cdproduto_int = None
             qtde_sistema_base = float(row.get("qtde_sistema") or 0)
-            qtde_entrega = qtde_entrega_map.get(cdproduto, 0.0)
+            qtde_entrega = qtde_entrega_map.get(cdproduto_int, 0.0) if cdproduto_int is not None else 0.0
             qtde_contada = float(row.get("qtde_contada") or 0)
             # considerar_entrega controla o cálculo de Sistema/Dif; qtde_entrega sempre exibida
             qtde_sistema_efetivo = qtde_sistema_base + (qtde_entrega if considerar_entrega else 0.0)
