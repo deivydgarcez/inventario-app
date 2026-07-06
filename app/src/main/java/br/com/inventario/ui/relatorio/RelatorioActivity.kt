@@ -442,6 +442,7 @@ class RelatorioActivity : TimeoutActivity() {
                 divergencias == 0 -> consolidar(null, null)
                 recontagemConfirmada && session.isSupervisor() -> consolidar(null, null)
                 recontagemConfirmada -> pedirSupervisor()
+                session.isSupervisor() -> pedirJustificativaSupervisor()
                 else -> pedirSupervisorComJustificativa()
             }
         }
@@ -449,6 +450,31 @@ class RelatorioActivity : TimeoutActivity() {
 
         dialog = MaterialAlertDialogBuilder(this).setView(view).setCancelable(true).create()
         dialog.show()
+    }
+
+    private fun pedirJustificativaSupervisor() {
+        val divergencias = (0 until (adapter?.itemCount ?: 0)).count { abs(adapter!!.getItem(it).diferenca ?: 0.0) > 0.001 }
+        val etJustificativa = EditText(this).apply {
+            hint = "Por que não fará recontagem? (obrigatório)"
+            minLines = 2
+            setPadding(48, 24, 48, 24)
+        }
+        val d = AlertDialog.Builder(this)
+            .setTitle("Consolidar sem recontagem")
+            .setMessage("$divergencias divergência(s). Como supervisor, informe o motivo para não refazer a contagem.")
+            .setView(etJustificativa)
+            .setPositiveButton("Consolidar", null)
+            .setNegativeButton("Cancelar", null)
+            .show()
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val justificativa = etJustificativa.text.toString().trim()
+            if (justificativa.length < 10) {
+                etJustificativa.error = "Descreva o motivo com pelo menos 10 caracteres"
+            } else {
+                d.dismiss()
+                consolidar(null, null, justificativa)
+            }
+        }
     }
 
     private fun pedirSupervisor() {
