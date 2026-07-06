@@ -51,14 +51,29 @@ _SQL_ENTREGA = """
     JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
     WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9
       AND B.CDDEPOSITO = ?
+      AND A.DTSAIDA >= DATEADD(-90 DAY TO CURRENT_DATE)
     GROUP BY B.CDPRODUTO
 """
 
 
-def _buscar_qtde_entrega(con, cddeposito: int) -> dict[int, float]:
-    """Retorna mapa cdproduto -> qtde pendente de entrega no depósito."""
+def _buscar_qtde_entrega(con, cddeposito: int, cdprodutos: list[int] | None = None) -> dict[int, float]:
+    """Retorna mapa cdproduto -> qtde pendente de entrega no depósito.
+
+    cdprodutos: quando fornecido, filtra apenas esses produtos — evita varrer
+    milhões de linhas históricas em SAIDAPRODUTO para depósitos movimentados.
+    """
     c = con.cursor()
-    c.execute(_SQL_ENTREGA, (cddeposito,))
+    if cdprodutos:
+        placeholders = ",".join(["?"] * len(cdprodutos))
+        sql = _SQL_ENTREGA.replace(
+            "AND B.CDDEPOSITO = ?",
+            f"AND B.CDDEPOSITO = ? AND B.CDPRODUTO IN ({placeholders})",
+        )
+        params: tuple = (cddeposito, *cdprodutos)
+    else:
+        sql = _SQL_ENTREGA
+        params = (cddeposito,)
+    c.execute(sql, params)
     resultado: dict[int, float] = {}
     ignorados = 0
     for row in fetchall_as_dict(c):
@@ -71,7 +86,8 @@ def _buscar_qtde_entrega(con, cddeposito: int) -> dict[int, float]:
         if val > 0:
             resultado[cdprod] = val
     exemplos = list(resultado.items())[:3]
-    print(f"[entrega] dep={cddeposito} produtos_com_entrega={len(resultado)} ignorados={ignorados} exemplos={exemplos}")
+    n = len(cdprodutos) if cdprodutos else "todos"
+    print(f"[entrega] dep={cddeposito} filtro_produtos={n} produtos_com_entrega={len(resultado)} ignorados={ignorados} exemplos={exemplos}")
     return resultado
 
 # SEC-2: tokens de pré-autenticação de supervisor {token: {login, idgrupo, expires}}
@@ -690,7 +706,8 @@ def relatorio_inventario(
         if considerar_entrega:
             print(f"[entrega] relatorio dep={cddeposito} session={session_id} considerar_entrega=True")
             try:
-                qtde_entrega_map = _buscar_qtde_entrega(con, cddeposito)
+                cdprodutos_sessao = [int(r["cdproduto"]) for r in rows if r.get("cdproduto") is not None]
+                qtde_entrega_map = _buscar_qtde_entrega(con, cddeposito, cdprodutos_sessao or None)
             except Exception as e:
                 print(f"[entrega] ERRO ao buscar SAIDAPRODUTO dep={cddeposito}: {e}")
         else:
@@ -1000,7 +1017,8 @@ def consolidar_inventario(
             if body.considerar_entrega:
                 print(f"[entrega] consolidar dep={body.cddeposito} session={body.session_id} considerar_entrega=True total_itens={total}")
                 try:
-                    qtde_entrega_map = _buscar_qtde_entrega(con, body.cddeposito)
+                    cdprodutos_sessao = [int(it["cdproduto"]) for it in itens if it.get("cdproduto") is not None]
+                    qtde_entrega_map = _buscar_qtde_entrega(con, body.cddeposito, cdprodutos_sessao or None)
                 except Exception as e:
                     print(f"[entrega] ERRO ao buscar SAIDAPRODUTO dep={body.cddeposito}: {e}")
             else:
