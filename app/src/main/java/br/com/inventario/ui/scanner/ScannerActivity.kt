@@ -185,7 +185,16 @@ class ScannerActivity : TimeoutActivity() {
             delay(6000)
             if (aguardandoScan) {
                 aguardandoScan = false
-                runOnUiThread { resetarBotaoEscanear() }
+                runOnUiThread {
+                    resetarBotaoEscanear()
+                    // Timeout sem leitura: re-arma automaticamente no modo múltiplo
+                    if (binding.switchMultiplo.isChecked && scanMode == ScanMode.CAMERA && !processando) {
+                        lifecycleScope.launch {
+                            delay(300)
+                            if (!processando && !aguardandoScan) iniciarScan()
+                        }
+                    }
+                }
             }
         }
     }
