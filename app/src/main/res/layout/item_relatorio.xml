@@ -106,14 +106,39 @@
 
         </LinearLayout>
 
-        <!-- Quantidade para entrega -->
-        <TextView
-            android:id="@+id/tvEntrega"
-            android:layout_width="wrap_content"
+        <!-- Quantidade para entrega - destaque visual -->
+        <LinearLayout
+            android:id="@+id/layoutEntrega"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textSize="11sp"
-            android:textColor="@color/textSecondary" />
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:background="#FFF3E0"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Separado p/ entrega"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#BF360C" />
+
+            <TextView
+                android:id="@+id/tvEntrega"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="#E65100" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

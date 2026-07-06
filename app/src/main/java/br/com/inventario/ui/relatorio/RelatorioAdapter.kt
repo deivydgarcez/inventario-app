@@ -2,6 +2,7 @@ package br.com.inventario.ui.relatorio
 
 import android.graphics.Color
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import br.com.inventario.data.model.ItemRelatorio
@@ -44,11 +45,12 @@ class RelatorioAdapter(
             tvSistema.text = "Sistema: ${item.qtde_sistema?.let { "%.2f".format(it) } ?: "N/D"}"
             tvContada.text = "Contada: ${item.qtde_contada?.let { "%.2f".format(it) } ?: "0"}"
             val entrega = item.qtde_entrega ?: 0.0
-            tvEntrega.text = "Pra entrega: %.0f".format(entrega)
-            tvEntrega.setTextColor(
-                if (entrega > 0.001) android.graphics.Color.parseColor("#E65100")
-                else android.graphics.Color.parseColor("#9E9E9E")
-            )
+            if (entrega > 0.001) {
+                layoutEntrega.visibility = View.VISIBLE
+                tvEntrega.text = "%.0f".format(entrega)
+            } else {
+                layoutEntrega.visibility = View.GONE
+            }
 
             val dif = item.diferenca ?: 0.0
             tvDiferenca.text = "Dif: ${"%.2f".format(dif)}"
