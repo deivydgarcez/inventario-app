@@ -106,6 +106,15 @@
 
         </LinearLayout>
 
+        <!-- Quantidade para entrega -->
+        <TextView
+            android:id="@+id/tvEntrega"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textSize="11sp"
+            android:textColor="@color/textSecondary" />
+
     </LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

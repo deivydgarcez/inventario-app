@@ -702,26 +702,25 @@ def relatorio_inventario(
         )
         rows = fetchall_as_dict(cur)
 
+        # Sempre busca qtde_entrega para exibição no app (independente de considerar_entrega)
         qtde_entrega_map: dict[int, float] = {}
-        if considerar_entrega:
-            print(f"[entrega] relatorio dep={cddeposito} session={session_id} considerar_entrega=True")
-            try:
-                cdprodutos_sessao = [int(r["cdproduto"]) for r in rows if r.get("cdproduto") is not None]
-                qtde_entrega_map = _buscar_qtde_entrega(con, cddeposito, cdprodutos_sessao or None)
-            except Exception as e:
-                print(f"[entrega] ERRO ao buscar SAIDAPRODUTO dep={cddeposito}: {e}")
-        else:
-            print(f"[entrega] relatorio dep={cddeposito} considerar_entrega=False (sem ajuste)")
+        print(f"[entrega] relatorio dep={cddeposito} session={session_id} considerar_entrega={considerar_entrega}")
+        try:
+            cdprodutos_sessao = [int(r["cdproduto"]) for r in rows if r.get("cdproduto") is not None]
+            qtde_entrega_map = _buscar_qtde_entrega(con, cddeposito, cdprodutos_sessao or None)
+        except Exception as e:
+            print(f"[entrega] ERRO ao buscar SAIDAPRODUTO dep={cddeposito}: {e}")
 
         result = []
         for row in rows:
             cdproduto = row["cdproduto"]
             qtde_sistema_base = float(row.get("qtde_sistema") or 0)
             qtde_entrega = qtde_entrega_map.get(cdproduto, 0.0)
-            qtde_sistema_efetivo = qtde_sistema_base + qtde_entrega
             qtde_contada = float(row.get("qtde_contada") or 0)
+            # considerar_entrega controla o cálculo de Sistema/Dif; qtde_entrega sempre exibida
+            qtde_sistema_efetivo = qtde_sistema_base + (qtde_entrega if considerar_entrega else 0.0)
             row["qtde_sistema"] = qtde_sistema_efetivo
-            row["qtde_entrega"] = qtde_entrega if qtde_entrega > 0.001 else None
+            row["qtde_entrega"] = qtde_entrega  # sempre envia (0 quando não há entrega)
             row["diferenca"] = qtde_contada - qtde_sistema_efetivo
             result.append(row)
 

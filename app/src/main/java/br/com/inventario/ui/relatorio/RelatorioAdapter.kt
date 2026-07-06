@@ -41,12 +41,15 @@ class RelatorioAdapter(
                 append("Cód. Int.: ${item.cdproduto}")
                 if (!item.codigobarra.isNullOrBlank()) append("  •  ${item.codigobarra}")
             }
-            tvSistema.text = buildString {
-                append("Sistema: ${item.qtde_sistema?.let { "%.2f".format(it) } ?: "N/D"}")
-                val entrega = item.qtde_entrega ?: 0.0
-                if (entrega > 0.001) append("  (+%.2f entrega)".format(entrega))
-            }
+            tvSistema.text = "Sistema: ${item.qtde_sistema?.let { "%.2f".format(it) } ?: "N/D"}"
             tvContada.text = "Contada: ${item.qtde_contada?.let { "%.2f".format(it) } ?: "0"}"
+            val entrega = item.qtde_entrega ?: 0.0
+            tvEntrega.text = "Pra entrega: %.0f".format(entrega)
+            tvEntrega.setTextColor(
+                if (entrega > 0.001) android.graphics.Color.parseColor("#E65100")
+                else android.graphics.Color.parseColor("#9E9E9E")
+            )
+
             val dif = item.diferenca ?: 0.0
             tvDiferenca.text = "Dif: ${"%.2f".format(dif)}"
             tvDiferenca.setTextColor(when {
