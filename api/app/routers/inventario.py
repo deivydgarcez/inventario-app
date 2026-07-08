@@ -31,10 +31,12 @@ _consolidando: set[int] = set()
 _consolidando_lock = threading.Lock()
 
 # ─── helper SAIDAPRODUTO ─────────────────────────────────────────────────────
-# Replica a fórmula do Automec (uCadInventarioList / LerArquivoColetor):
+# Replica exatamente SP_POSICAO_ESTOQUE do Automec:
 #   QTDEENTREGA = QTDEENTREGAS - QTDELIBERADA - QTDEENTREGAR - QTDECANCELADA - QTDECARREGADA
-# Equivalente direto via SAIDAPRODUTO:
-#   (QTDPRODUTO - QTD_VEND_FUT + QTD_VEND_FUT_LIB) - QTDELIB - QTDENTREGAR - QTDENTCANCELADA - QTDCARREGADA
+#   onde cada componente usa CASE WHEN IDENTREGA <> 9999 (NULL também excluído).
+# Filtro IDENTREGA <> 9999 substitui o antigo filtro de 90 dias — pedidos sem
+# IDENTREGA (não atribuídos a rota) ou com IDENTREGA=9999 (venda futura) não
+# contam como "pra entrega" no inventário, exatamente como o Automec faz.
 _SQL_ENTREGA = """
     SELECT B.CDPRODUTO,
         SUM(
@@ -50,8 +52,8 @@ _SQL_ENTREGA = """
     FROM SAIDAPRODUTO B
     JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
     WHERE NOT (A.STATUS IN (2, 42)) AND B.STATUSSE <> 9
+      AND B.IDENTREGA <> 9999
       AND B.CDDEPOSITO = ?
-      AND A.DTSAIDA >= DATEADD(-90 DAY TO CURRENT_DATE)
     GROUP BY B.CDPRODUTO
 """
 
