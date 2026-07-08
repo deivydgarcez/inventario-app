@@ -1,5 +1,15 @@
 # CHANGELOG — Invec
 
+## [1.6.4] — 2026-07-08
+
+### Correções de bugs
+
+#### Backend — Compatibilidade universal com versões antigas do Automec
+
+- **Detecção adaptativa de colunas em `SAIDAPRODUTO`** (`inventario.py`): versões antigas do Automec não possuem as colunas `QTD_VEND_FUT` e `QTD_VEND_FUT_LIB`. O servidor tentava usar essas colunas no cálculo de `QTDEENTREGA`, falhava silenciosamente (exceção capturada internamente) e retornava entrega = 0 para todos os produtos — fazendo o bloco âmbar "Separado p/ entrega" nunca aparecer no relatório do app. Corrigido: `_get_sp_features()` consulta `RDB$RELATION_FIELDS` na primeira chamada, detecta quais colunas existem e cacheia o resultado; `_build_sql_entrega()` monta o SQL omitindo as colunas ausentes. O cálculo agora funciona automaticamente em qualquer versão do Automec, sem configuração.
+
+---
+
 ## [1.6.3] — 2026-07-08
 
 ### Novas funcionalidades
