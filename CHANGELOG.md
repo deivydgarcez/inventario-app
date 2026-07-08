@@ -1,5 +1,30 @@
 # CHANGELOG — Invec
 
+## [1.6.3] — 2026-07-08
+
+### Novas funcionalidades
+
+#### Backend — Login com senha do Automec (USUARIOS.SENHA)
+
+- **`_automec_code()` implementado** (`auth.py`): replica exatamente a função `Code()` do Delphi do Automec (1996) — rotação left do input + XOR posicional com 3 chaves de 53 bytes + wrap em 255. Verificado com `Decode()` do Delphi: 7/7 roundtrips corretos.
+- **Login aceita `SENHA` do Automec**: a comparação de login agora passa `_automec_code(senha)` para o campo `SENHA` no Firebird. O mesmo usuário pode logar com a senha do `SENHAMOBILE` (texto puro) **ou** com a senha cadastrada no Automec — ambas funcionam simultaneamente.
+
+### Correções de bugs
+
+#### Android — Timeout após consolidar
+
+- **`RelatorioActivity` chamava `carregarRelatorio()` após consolidar** (`RelatorioActivity.kt`): depois de consolidar com sucesso, `session.encerrarSession()` era chamado (zerando o `sessionId`), mas em seguida `carregarRelatorio()` tentava carregar o relatório com `sessionId = null` → timeout no servidor → erro de rede → app voltava ao início sem mensagem clara. Corrigido: chama `finish()` após consolidação bem-sucedida, voltando para a seleção de depósito normalmente.
+
+#### Backend — Bloqueio de senha muito agressivo
+
+- **Bloqueio gradativo agora começa a partir de 5 erros** (`auth.py`): antes o primeiro erro errado já disparava 1 minuto de bloqueio. Corrigido: 1–4 erros não bloqueiam (o burst em memória ainda protege contra ataques automatizados); 5 erros → 5 min, 6 → 6 min, …, 10+ → 10 min.
+
+### Atualizações
+
+- **Gradle 9.5.1 → 9.6.1** (`gradle/wrapper/gradle-wrapper.properties`)
+
+---
+
 ## [1.6.2] — 2026-07-03
 
 ### Correções de bugs

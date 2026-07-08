@@ -587,7 +587,7 @@ class RelatorioActivity : TimeoutActivity() {
                     val inv = body?.idinventario?.let { " (Inv. nº $it)" } ?: ""
                     val msg = (body?.mensagem ?: "Consolidado com sucesso") + inv
                     Toast.makeText(this@RelatorioActivity, msg, Toast.LENGTH_LONG).show()
-                    carregarRelatorio()
+                    finish()
                 } else {
                     val errorBody = response.errorBody()?.string() ?: ""
                     val detail = try {
@@ -624,7 +624,7 @@ class RelatorioActivity : TimeoutActivity() {
                     }
                     session.encerrarSession()
                     Toast.makeText(this@RelatorioActivity, "Consolidação verificada no histórico. Dados atualizados.", Toast.LENGTH_LONG).show()
-                    carregarRelatorio()
+                    finish()
                 } else {
                     Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
                 }

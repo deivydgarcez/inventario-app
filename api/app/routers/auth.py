@@ -20,15 +20,46 @@ BLOQUEIO_BURST_SEGUNDOS = 60
 # Bloqueio gradativo persistente no banco
 # (limiar de falhas nas últimas 2h → segundos de bloqueio)
 _ESCALAS = [
-    (7,  7 * 60),
-    (6,  6 * 60),
-    (5,  5 * 60),
-    (4,  4 * 60),
-    (3,  3 * 60),
-    (2,  2 * 60),
-    (1,  1 * 60),
+    (10, 10 * 60),
+    (9,   9 * 60),
+    (8,   8 * 60),
+    (7,   7 * 60),
+    (6,   6 * 60),
+    (5,   5 * 60),
+    # < 5 erros: sem bloqueio no banco (burst em memória ainda cobre ataques)
 ]
 _JANELA_CONTAGEM_MIN = 120
+
+# --- Criptografia de USUARIOS.SENHA (replica Code() do Delphi Automec, 1996) ---
+_AUTOMEC_CHAVE = [
+    '¼½¡«»¦ÁÂ¢¥¤ðÐ¶ÊËÈßÔÒõÕµþÞÚÛÙýÝ¯´±¾§÷¸°¨aslkdfjgpqwert'.encode('latin-1'),
+    'Ð«»¦¶¢¥¤ðÊË½¼¡ÁÂaslkdfÈßÔÒõÕµþÞÚÛÙ¾§÷¸°¨pqwertýÝ¯´±jg'.encode('latin-1'),
+    'ðÊË½¼Ð«wer»¦¶¢¥ßÔÒõ¤¡ÁÂaslkdfÈ°¨¯´±jÕµþÞÚÛÙ¾§÷¸gpqtýÝ'.encode('latin-1'),
+]
+_AUTOMEC_CHAVE_LEN = len(_AUTOMEC_CHAVE[0])  # 53
+
+
+def _automec_code(texto: str) -> str:
+    """Replica Code() do Delphi (Automec) — criptografa senha para comparar com USUARIOS.SENHA."""
+    btext = texto.encode('latin-1', errors='replace')
+    tamanho = len(btext)
+    if tamanho == 0:
+        return ''
+    # Delphi: invtxt := Copy(texto, 2, tamanho-1) + texto[1]  (rotate left 1)
+    invtxt = btext[1:] + bytes([btext[0]])
+    result = bytearray(tamanho)
+    modo, posi = 0, 0  # 0-indexed (Delphi: modo 1..3, posi 1..53)
+    for i in range(tamanho):
+        auxint = _AUTOMEC_CHAVE[modo][posi] + invtxt[i] + (i + 1)
+        if modo == 2:          # Delphi: if modo = 3 then Inc(posi)
+            posi += 1
+        if posi >= _AUTOMEC_CHAVE_LEN:
+            posi = 0
+        modo = (modo + 1) % 3
+        if auxint > 255:
+            auxint -= 255
+        result[i] = auxint & 0xFF
+    return result.decode('latin-1')
 
 
 def _duracao_bloqueio(total_falhas: int) -> int:
@@ -119,7 +150,7 @@ def login(body: LoginRequest, request: Request):
             "WHERE LOWER(LOGIN) = LOWER(?) "
             "AND (SENHAMOBILE = ? OR SENHA = ?) "
             "AND (INATIVO IS NULL OR INATIVO = 0)",
-            (body.login, body.senha, body.senha),
+            (body.login, body.senha, _automec_code(body.senha)),
         )
         user = fetchone_as_dict(cur)
 
