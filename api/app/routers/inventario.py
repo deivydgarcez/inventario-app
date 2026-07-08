@@ -37,12 +37,45 @@ _consolidando_lock = threading.Lock()
 # Filtro IDENTREGA <> 9999 substitui o antigo filtro de 90 dias — pedidos sem
 # IDENTREGA (não atribuídos a rota) ou com IDENTREGA=9999 (venda futura) não
 # contam como "pra entrega" no inventário, exatamente como o Automec faz.
-_SQL_ENTREGA = """
+#
+# QTD_VEND_FUT e QTD_VEND_FUT_LIB são opcionais — versões mais antigas do
+# Automec não têm essas colunas. A detecção ocorre na primeira chamada e fica
+# em cache para evitar consulta ao RDB$RELATION_FIELDS a cada requisição.
+
+_sp_features_cache: dict[str, bool] | None = None
+_sp_features_lock = threading.Lock()
+
+
+def _get_sp_features(con) -> dict[str, bool]:
+    global _sp_features_cache
+    if _sp_features_cache is not None:
+        return _sp_features_cache
+    with _sp_features_lock:
+        if _sp_features_cache is not None:
+            return _sp_features_cache
+        c = con.cursor()
+        c.execute("""
+            SELECT TRIM(RDB$FIELD_NAME) FROM RDB$RELATION_FIELDS
+            WHERE TRIM(RDB$RELATION_NAME) = 'SAIDAPRODUTO'
+        """)
+        cols = {r[0] for r in c.fetchall()}
+        _sp_features_cache = {
+            "QTD_VEND_FUT":     "QTD_VEND_FUT"     in cols,
+            "QTD_VEND_FUT_LIB": "QTD_VEND_FUT_LIB" in cols,
+        }
+        print(f"[entrega] SAIDAPRODUTO cols opcionais detectadas: {_sp_features_cache}")
+        return _sp_features_cache
+
+
+def _build_sql_entrega(feats: dict[str, bool]) -> str:
+    vend_fut     = "- COALESCE(B.QTD_VEND_FUT, 0)"     if feats["QTD_VEND_FUT"]     else ""
+    vend_fut_lib = "+ COALESCE(B.QTD_VEND_FUT_LIB, 0)" if feats["QTD_VEND_FUT_LIB"] else ""
+    return f"""
     SELECT B.CDPRODUTO,
         SUM(
             (COALESCE(B.QTDPRODUTO, 0)
-             - COALESCE(B.QTD_VEND_FUT, 0)
-             + COALESCE(B.QTD_VEND_FUT_LIB, 0)
+             {vend_fut}
+             {vend_fut_lib}
              - COALESCE(B.QTDELIB, 0)
              - COALESCE(B.QTDENTREGAR, 0)
              - COALESCE(B.QTDENTCANCELADA, 0)
@@ -64,16 +97,18 @@ def _buscar_qtde_entrega(con, cddeposito: int, cdprodutos: list[int] | None = No
     cdprodutos: quando fornecido, filtra apenas esses produtos — evita varrer
     milhões de linhas históricas em SAIDAPRODUTO para depósitos movimentados.
     """
+    feats = _get_sp_features(con)
+    sql_entrega = _build_sql_entrega(feats)
     c = con.cursor()
     if cdprodutos:
         placeholders = ",".join(["?"] * len(cdprodutos))
-        sql = _SQL_ENTREGA.replace(
+        sql = sql_entrega.replace(
             "AND B.CDDEPOSITO = ?",
             f"AND B.CDDEPOSITO = ? AND B.CDPRODUTO IN ({placeholders})",
         )
         params: tuple = (cddeposito, *cdprodutos)
     else:
-        sql = _SQL_ENTREGA
+        sql = sql_entrega
         params = (cddeposito,)
     c.execute(sql, params)
     resultado: dict[int, float] = {}
@@ -747,29 +782,31 @@ def debug_entrega(
     if client_ip not in ("127.0.0.1", "::1", "localhost"):
         raise HTTPException(status_code=403, detail="Acesso permitido apenas de localhost")
 
-    SQL_RAW = """
-        SELECT
-            B.NRPEDIDO,
-            CAST(B.CDPRODUTO AS INTEGER)    AS CDPRODUTO,
-            B.QTDPRODUTO,
-            COALESCE(B.QTD_VEND_FUT, 0)    AS QTD_VEND_FUT,
-            COALESCE(B.QTDELIB, 0)          AS QTDELIB,
-            COALESCE(B.QTDENTREGAR, 0)      AS QTDENTREGAR,
-            COALESCE(B.QTDENTCANCELADA, 0)  AS QTDENTCANCELADA,
-            COALESCE(B.QTDCARREGADA, 0)     AS QTDCARREGADA,
-            COALESCE(B.FATORCONV, 1)        AS FATORCONV,
-            COALESCE(B.IDENTREGA, 0)        AS IDENTREGA,
-            B.STATUSSE,
-            B.CDDEPOSITO,
-            A.STATUS                        AS STATUS_SAIDA,
-            A.DTSAIDA,
-            CURRENT_DATE                    AS HOJE
-        FROM SAIDAPRODUTO B
-        JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
-        WHERE B.CDDEPOSITO = ?
-        ORDER BY B.CDPRODUTO, B.NRPEDIDO
-    """
     with get_connection() as con:
+        feats = _get_sp_features(con)
+        qtd_vf_col = "COALESCE(B.QTD_VEND_FUT, 0)" if feats["QTD_VEND_FUT"] else "0"
+        SQL_RAW = f"""
+            SELECT
+                B.NRPEDIDO,
+                CAST(B.CDPRODUTO AS INTEGER)    AS CDPRODUTO,
+                B.QTDPRODUTO,
+                {qtd_vf_col}                    AS QTD_VEND_FUT,
+                COALESCE(B.QTDELIB, 0)          AS QTDELIB,
+                COALESCE(B.QTDENTREGAR, 0)      AS QTDENTREGAR,
+                COALESCE(B.QTDENTCANCELADA, 0)  AS QTDENTCANCELADA,
+                COALESCE(B.QTDCARREGADA, 0)     AS QTDCARREGADA,
+                COALESCE(B.FATORCONV, 1)        AS FATORCONV,
+                COALESCE(B.IDENTREGA, 0)        AS IDENTREGA,
+                B.STATUSSE,
+                B.CDDEPOSITO,
+                A.STATUS                        AS STATUS_SAIDA,
+                A.DTSAIDA,
+                CURRENT_DATE                    AS HOJE
+            FROM SAIDAPRODUTO B
+            JOIN SAIDAESTOQUE A ON A.NRPEDIDO = B.NRPEDIDO AND A.IDEMPRESA = B.IDEMPRESA
+            WHERE B.CDDEPOSITO = ?
+            ORDER BY B.CDPRODUTO, B.NRPEDIDO
+        """
         cur = con.cursor()
         try:
             cur.execute(SQL_RAW, (cddeposito,))
