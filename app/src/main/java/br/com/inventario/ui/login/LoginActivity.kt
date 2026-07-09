@@ -5,6 +5,9 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import br.com.inventario.data.api.RetrofitClient
 import br.com.inventario.data.model.LoginRequest
@@ -24,6 +27,23 @@ class LoginActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         session = SessionManager(this)
+
+        // Modo escuro
+        binding.switchDarkMode.isChecked = session.isDarkMode()
+        binding.switchDarkMode.setOnCheckedChangeListener { _, checked ->
+            session.saveDarkMode(checked)
+            AppCompatDelegate.setDefaultNightMode(
+                if (checked) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+            )
+        }
+
+        // Teclado: empurra conteúdo para cima em vez de cobrir os campos
+        ViewCompat.setOnApplyWindowInsetsListener(binding.scrollView) { view, insets ->
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            view.setPadding(0, 0, 0, if (imeBottom > 0) imeBottom else navBottom)
+            insets
+        }
 
         if (intent.getBooleanExtra("timeout", false)) {
             Toast.makeText(this, "Sessão encerrada por inatividade", Toast.LENGTH_LONG).show()
