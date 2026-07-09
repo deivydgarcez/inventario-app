@@ -1,5 +1,19 @@
 # CHANGELOG — Invec
 
+## [1.6.5] — 2026-07-09
+
+### Correções de bugs
+
+#### Android — Scanner Bluetooth: painel de contagem visível
+
+- **Painel grande de feedback em modo BT** (`activity_scanner.xml`, `ScannerActivity.kt`): após o primeiro scan em modo Bluetooth, a tela exibia apenas o rodapé com textos pequenos (15sp), dificultando a leitura das contagens. Corrigido: um painel central aparece após o primeiro scan com o nome do produto (18sp) e a quantidade contada naquele produto em destaque (64sp laranja), além do contador total da sessão. As instruções permanecem visíveis acima do painel de feedback.
+
+#### Android — Bug: scan no Relatório abria edição indesejada
+
+- **Scanner BT acionava edição do primeiro item do Relatório** (`RelatorioActivity.kt`): ao escanear qualquer código de barras na tela de Relatório, os caracteres enviados pelo leitor BT chegavam ao `RecyclerView` como eventos de teclado; o ENTER final, com o primeiro item em foco, era interpretado como clique e abria o dialog de edição de quantidade. Corrigido: `dispatchKeyEvent` sobrescrito em `RelatorioActivity` — bufferiza os caracteres e engole o ENTER quando detecta uma sequência com ≥ 3 caracteres (padrão de scanner BT), impedindo que o evento chegue ao RecyclerView.
+
+---
+
 ## [1.6.4] — 2026-07-08
 
 ### Correções de bugs
