@@ -7,6 +7,7 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
+import br.com.inventario.R
 import androidx.lifecycle.lifecycleScope
 import br.com.inventario.data.api.RetrofitClient
 import br.com.inventario.data.db.InvecDatabase
@@ -42,12 +43,14 @@ class MainActivity : TimeoutActivity() {
 
         atualizarHeader()
 
-        binding.switchModoEscuro.isChecked = session.isDarkMode()
-        binding.switchModoEscuro.setOnCheckedChangeListener { _, checked ->
-            session.saveDarkMode(checked)
+        atualizarIconeDarkMode()
+        binding.btnDarkMode.setOnClickListener {
+            val novo = !session.isDarkMode()
+            session.saveDarkMode(novo)
             AppCompatDelegate.setDefaultNightMode(
-                if (checked) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+                if (novo) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
             )
+            atualizarIconeDarkMode()
         }
 
         binding.btnSelecionarDeposito.setOnClickListener { carregarDepositos() }
@@ -63,6 +66,11 @@ class MainActivity : TimeoutActivity() {
     override fun onResume() {
         super.onResume()
         atualizarHeader()
+    }
+
+    private fun atualizarIconeDarkMode() {
+        val icon = if (session.isDarkMode()) R.drawable.ic_light_mode else R.drawable.ic_dark_mode
+        binding.btnDarkMode.setImageResource(icon)
     }
 
     private fun atualizarHeader() {

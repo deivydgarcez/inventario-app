@@ -73,7 +73,7 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:gravity="center_horizontal"
-                android:paddingVertical="6dp">
+                android:paddingVertical="10dp">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -106,7 +106,7 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:gravity="center_horizontal"
-                android:paddingVertical="6dp">
+                android:paddingVertical="10dp">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -141,7 +141,7 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:gravity="center_horizontal"
-                android:paddingVertical="6dp">
+                android:paddingVertical="10dp">
 
                 <TextView
                     android:layout_width="wrap_content"

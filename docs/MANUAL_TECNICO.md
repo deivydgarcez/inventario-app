@@ -154,7 +154,9 @@ Qualquer toque na tela (`onUserInteraction`) reinicia o timer. Ao expirar, limpa
 
 ### Modo Escuro
 
-Switch na tela inicial (`MainActivity`). Preferência salva em `SessionManager.dark_mode`. `InvecApp.kt` (subclasse de `Application`) aplica o modo no startup, antes de qualquer Activity inflar layout:
+`ImageButton` com ícone lua/sol na `LoginActivity` (canto superior direito fixo, sibling do `ScrollView`) e na `MainActivity` (cabeçalho laranja). Substituiu o `Switch` que estava semanticamente confuso e desalinhado visualmente.
+
+Preferência salva em `SessionManager.dark_mode`. `InvecApp.kt` (subclasse de `Application`) aplica o modo no startup, antes de qualquer Activity inflar layout:
 
 ```kotlin
 // InvecApp.kt
@@ -164,6 +166,10 @@ AppCompatDelegate.setDefaultNightMode(
     else          AppCompatDelegate.MODE_NIGHT_NO
 )
 ```
+
+O ícone muda ao alternar: lua (`ic_dark_mode.xml`) quando o tema claro está ativo, sol (`ic_light_mode.xml`) quando o tema escuro está ativo.
+
+**Fix: botão não "cai" ao abrir/logoff** — root de `activity_login.xml` é `FrameLayout` com `android:fitsSystemWindows="true"`. O `ScrollView` e o `ImageButton` são irmãos diretos do root. O root absorve os insets de status/nav bar antes do primeiro `layout pass`, mantendo o botão estável desde o primeiro frame.
 
 Paleta de cores em `res/values-night/colors.xml`:
 
@@ -453,6 +459,57 @@ Pedidos faturados mas não entregues representam estoque fisicamente presente ma
 | `ALERTA` de quantidade | `qtde > 2 × qtdeatual_snap` e `qtdeatual_snap ≥ 10`: grava alerta e retorna flag para o app. |
 | `device_id` | UUID v4 gerado na primeira abertura do app, salvo em SharedPreferences. Gravado em todos os eventos do log. |
 | Retenção de logs | `BIPAGEM`: 90 dias. Geral: 365 dias. `EDICAO_SUSPEITA` e `ALERTA_REESCAN`: permanentes. |
+
+---
+
+## Testar Conexão (LoginActivity)
+
+Botão **↻ Testar** no card de configuração do servidor. Faz `GET /ping` com uma instância `Retrofit.Builder()` construída na hora com a URL digitada — sem usar o `RetrofitClient` singleton (que poderia ter URL desatualizada ou token Bearer). Garante mesma stack HTTP/OkHttp do login.
+
+```kotlin
+val api = Retrofit.Builder()
+    .baseUrl(baseUrl)   // URL normalizada: http:// + barra final garantidas
+    .addConverterFactory(GsonConverterFactory.create())
+    .build()
+    .create(ApiService::class.java)
+val response = api.ping()
+```
+
+Resultado exibido em `tvTesteResult`:
+- **Verde** `#E8F5E9` / texto `#2E7D32`: servidor respondeu com HTTP 2xx
+- **Vermelho** `#FFEBEE` / texto `#C62828`: timeout, recusa de conexão ou HTTP de erro
+
+---
+
+## Testes Unitários
+
+### RelatorioAdapterTest
+
+`app/src/test/java/br/com/inventario/ui/relatorio/RelatorioAdapterTest.kt` — 17 testes JUnit4 + MockK.
+
+**Configuração necessária** em `app/build.gradle.kts`:
+```kotlin
+testOptions {
+    unitTests {
+        isReturnDefaultValues = true  // permite instanciar RecyclerView.Adapter sem Android runtime
+    }
+}
+```
+
+**Padrão do spy** (necessário para stub de métodos `notify*` do RecyclerView):
+```kotlin
+adapter = spyk(RelatorioAdapter(items) { _, _ -> })
+every { adapter.notifyItemChanged(any()) } just Runs
+every { adapter.notifyItemRemoved(any()) } just Runs
+```
+
+**Cobertura:**
+- `getItem` / `itemCount` básicos
+- `updateItem`: dif positiva (`+`), negativa (`-`), zero (`—`), `qtde_sistema null`, posição correta do `notifyItemChanged`, itens adjacentes inalterados
+- `removeItem`: contagem, ordem dos itens restantes, remoção do último item, posição correta do `notifyItemRemoved`
+- Prefixo de sinal e display de `qtde_sistema null`
+
+**Observação de locale:** `"%.2f".format(3.5)` retorna `"3,50"` em pt_BR. Testes usam `startsWith("+")` / `assertFalse(result.startsWith("+"))` em vez de comparação de string exata.
 
 ---
 

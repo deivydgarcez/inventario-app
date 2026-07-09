@@ -1,5 +1,43 @@
 # CHANGELOG — Invec
 
+## [1.7.0] — 2026-07-09
+
+### Novas funcionalidades
+
+#### Android — Ícone de modo escuro (lua/sol)
+
+- **`ImageButton` com ícone lua/sol** substituiu o switch de modo escuro em ambas as telas (`activity_login.xml`, `activity_main.xml`, `LoginActivity.kt`, `MainActivity.kt`): o switch era semanticamente confuso e visualmente desalinhado. Agora é um botão ícone padrão Material: lua 🌙 quando modo claro está ativo (para ativar o escuro), sol ☀️ quando modo escuro está ativo. O ícone na tela de login fica fixo no canto superior direito; na tela principal fica no cabeçalho laranja ao lado do logo. Vetores em `ic_dark_mode.xml` e `ic_light_mode.xml`.
+
+#### Android — Botão "Testar" conexão com servidor
+
+- **`btnTestarConexao`** adicionado ao card de configuração do servidor (`activity_login.xml`, `LoginActivity.kt`): ao lado do botão "Salvar", um botão "Testar" (ícone de sync) faz uma chamada `GET /ping` usando a URL digitada. Resultado visível abaixo dos botões: fundo verde + texto "✓ Servidor respondeu em Xms" ou fundo vermelho + texto "✗ Sem resposta — verifique o IP e a porta". Implementado com `Retrofit.Builder()` (mesmo stack HTTP do login) para garantir compatibilidade de timeout e certificados com o fluxo real.
+
+#### Android — Testes unitários do RelatorioAdapter
+
+- **17 testes JUnit4 + MockK** em `RelatorioAdapterTest.kt` cobrindo: `getItem`, `itemCount`, `updateItem` (dif positiva, negativa, zero, sistema nulo, `notifyItemChanged` na posição correta, itens adjacentes inalterados), `removeItem` (contagem, ordem, último item, `notifyItemRemoved`), prefixos de sinal e exibição de `qtde_sistema null`. Usa `spyk` com `notifyItemChanged`/`notifyItemRemoved` stubados. Requereu `isReturnDefaultValues = true` em `testOptions` do `app/build.gradle.kts` para instanciar `RecyclerView.Adapter` sem o runtime Android.
+
+### Correções de bugs
+
+#### Android — Botão de modo escuro "caía" na tela de login
+
+- **Root da `activity_login.xml` reestruturado como `FrameLayout` com `fitsSystemWindows="true"`** (`activity_login.xml`): o `ImageButton` de modo escuro era filho de um `FrameLayout` dentro do `ScrollView`. Na primeira abertura ou ao voltar do logoff, o `ScrollView` ainda não tinha altura definida durante o primeiro `layout pass`, e o sistema aplicava os insets de status bar depois — fazendo o botão "pular" visualmente para baixo. Corrigido: o `ScrollView` é agora filho direto do root `FrameLayout`; o `ImageButton` é irmão do `ScrollView` no root. O root absorve os insets de status/nav bar antes do primeiro layout pass; o botão fica estável desde o primeiro frame.
+
+### Melhorias de interface
+
+#### Android — Relatório: botões Histórico/Auditoria
+
+- **`btnHistorico` e `btnAuditoria`** convertidos de `TextButton` para `OutlinedButton` com `strokeColor=dividerColor`, altura aumentada de 36dp para 40dp, ícone de 14dp para 16dp, margens internas adicionadas (`marginEnd/Start 4dp`). Resultado: hierarquia visual consistente com os demais botões e área de toque maior.
+
+#### Android — Relatório: item com mais respiro vertical
+
+- **Padding vertical** das três colunas (Sistema, Contada, Dif.) no `item_relatorio.xml` aumentado de `6dp` para `10dp` por coluna. Os valores ficam mais respirados e menos comprimidos, especialmente no `tvContada` (22sp bold).
+
+#### Android — Relatório: dica de swipe com fundo consistente
+
+- **`tvDicaSwipe`** recebeu `background="@color/cardBackground"` + `paddingHorizontal="16dp"`, ficando visualmente consistente com a barra de status acima e não "flutuando" sobre o fundo da tela.
+
+---
+
 ## [1.6.5] — 2026-07-09
 
 ### Novas funcionalidades

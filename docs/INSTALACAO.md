@@ -107,10 +107,13 @@ O servidor valida a licença **toda vez que é iniciado**. Sem licença válida,
 2. Abra o arquivo no celular e instale. Se pedir permissão de "fonte desconhecida", aceite.
 3. Abra o app Invec
 4. No campo **URL do servidor**, informe o endereço (ex: `http://192.168.1.31:8000/`)
-5. Toque em **Salvar servidor**
-6. Faça login com seu usuário e senha mobile
+5. Toque em **↻ Testar** — deve aparecer "✓ Servidor respondeu em Xms" (fundo verde). Se aparecer erro, verifique o IP e a porta.
+6. Toque em **Salvar** para gravar a URL no celular
+7. Faça login com seu usuário e senha mobile
 
 > A URL só precisa ser configurada uma vez por celular. Se o IP mudar, atualize antes de logar.
+>
+> **Dica:** use sempre o botão **Testar** antes de salvar para confirmar que o celular consegue alcançar o servidor pelo Wi-Fi.
 
 ---
 

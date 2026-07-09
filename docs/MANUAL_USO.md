@@ -55,7 +55,7 @@ O Invec é um aplicativo Android de coleta de inventário. Funciona em modo clie
 
 ```
 ┌─────────────────────────────────────┐
-│                                     │
+│                                  [🌙]│  ← ícone modo escuro (canto sup. direito)
 │        [Logo Pontual Tecnologia]    │
 │          Inventário de Estoque      │
 │                                     │
@@ -73,7 +73,8 @@ O Invec é um aplicativo Android de coleta de inventário. Funciona em modo clie
 │  ╔═══════════════════════════════╗  │
 │  ║  CONFIGURAÇÃO DO SERVIDOR     ║  │  ← card com borda
 │  ║  URL ________________________ ║  │
-│  ║  [ Salvar servidor ]          ║  │
+│  ║  [ Salvar ]   [ ↻ Testar ]   ║  │
+│  ║  ✓ Servidor respondeu em Xms  ║  │  ← resultado (aparece após testar)
 │  ╚═══════════════════════════════╝  │
 └─────────────────────────────────────┘
 ```
@@ -82,11 +83,13 @@ O Invec é um aplicativo Android de coleta de inventário. Funciona em modo clie
 
 | Elemento | Função |
 |---|---|
+| **🌙 / ☀️ (ícone canto superior direito)** | Alterna entre tema escuro e claro. Lua = ativar modo escuro; Sol = voltar ao modo claro |
 | **Login** | Campo para digitar o login do Automec |
 | **Senha** | Campo de senha. Ícone 👁 alterna visibilidade |
 | **Entrar** | Autentica e abre a tela principal |
 | **URL do servidor** | Endereço IP + porta do InvecServidor (ex: `http://192.168.1.31:8000/`) |
-| **Salvar servidor** | Grava a URL no celular — só precisa fazer uma vez por aparelho |
+| **Salvar** | Grava a URL no celular — só precisa fazer uma vez por aparelho |
+| **↻ Testar** | Verifica se o servidor no IP digitado está respondendo. Resultado aparece logo abaixo: verde (ok) ou vermelho (sem resposta) |
 
 ### Configuração inicial (primeira vez)
 
@@ -120,7 +123,7 @@ http://192.168.1.31:8000/
 
 ```
 ┌─────────────────────────────────────┐
-│ [Logo Pontual branco]               │  ← cabeçalho laranja
+│ [Logo Pontual branco]          [🌙] │  ← cabeçalho laranja; ícone modo escuro à direita
 │ Olá, [Nome do usuário]!             │
 │ [Nome do depósito selecionado]      │
 ├─────────────────────────────────────┤
@@ -137,7 +140,6 @@ http://192.168.1.31:8000/
 │  ┌── Ver Relatorio ──────────────┐  │  ← botao com borda
 │  └───────────────────────────────┘  │
 │                                     │
-│       Modo escuro          ◯        │  ← switch
 │  [ Sair da conta ]  [ Servidor ]    │  ← rodapé
 └─────────────────────────────────────┘
 ```
@@ -147,11 +149,11 @@ http://192.168.1.31:8000/
 | Elemento | Estado | Função |
 |---|---|---|
 | **Cabeçalho** | Sempre visível | Mostra nome do usuário logado e depósito ativo |
+| **🌙 / ☀️ (ícone no cabeçalho)** | Sempre visível | Alterna entre tema escuro e claro. Salvo automaticamente |
 | **Selecionar Depósito** | Sempre ativo | Abre lista de depósitos — **obrigatório antes de coletar** |
 | **Iniciar Coleta** | Ativo apenas após selecionar depósito | Abre o scanner para bipar produtos |
 | **Ver Relatório** | Ativo apenas após selecionar depósito | Abre a lista de produtos já bipados |
 | **Acesso Mobile — Usuários** | Visível só para `mobile_admin` | Gerencia senhas e permissões de usuários |
-| **Modo escuro** | Switch | Alterna entre tema claro e escuro. Salvo automaticamente |
 | **Sair da conta** | Rodapé | Encerra a sessão e volta para o login |
 | **Servidor** | Rodapé | Abre o campo de URL para alterar o endereço do servidor |
 
@@ -737,4 +739,4 @@ flowchart TD
 
 ---
 
-> **Versão do manual:** Junho/2026 — App Invec v1.x
+> **Versão do manual:** Julho/2026 — App Invec v1.7.0

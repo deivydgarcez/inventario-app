@@ -67,7 +67,9 @@
         android:textSize="11sp"
         android:textColor="@color/textSecondary"
         android:gravity="center"
-        android:paddingVertical="4dp"
+        android:paddingVertical="5dp"
+        android:paddingHorizontal="16dp"
+        android:background="@color/cardBackground"
         android:visibility="gone" />
 
     <!-- Lista -->
@@ -110,30 +112,35 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnHistorico"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
-                android:layout_height="36dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
+                android:layout_marginEnd="4dp"
                 android:text="Histórico"
                 android:textSize="12sp"
                 app:icon="@drawable/ic_history"
-                app:iconSize="14dp"
+                app:iconSize="16dp"
+                app:strokeColor="@color/dividerColor"
                 app:cornerRadius="8dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnAuditoria"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
-                android:layout_height="36dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
+                android:layout_marginStart="4dp"
                 android:text="Auditoria"
                 android:textSize="12sp"
                 app:icon="@drawable/ic_report"
-                app:iconSize="14dp"
+                app:iconSize="16dp"
+                app:strokeColor="@color/dividerColor"
                 app:cornerRadius="8dp" />
 
         </LinearLayout>
@@ -144,7 +151,7 @@
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="42dp"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:text="↑ Sincronizar scans pendentes"
             android:textSize="13sp"
             android:visibility="gone"
