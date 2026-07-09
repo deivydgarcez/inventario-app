@@ -2,6 +2,31 @@
 
 ## [1.6.5] — 2026-07-09
 
+### Novas funcionalidades
+
+#### Android — Tela de login
+
+- **Switch de modo escuro na tela de login** (`activity_login.xml`, `LoginActivity.kt`): o modo escuro agora pode ser ativado diretamente na tela inicial, sem precisar entrar no app. A preferência é compartilhada com o switch da tela principal.
+- **Teclado não cobre mais os campos de login** (`LoginActivity.kt`): adicionado listener de insets do sistema — quando o teclado abre, o ScrollView recebe padding dinâmico igual à altura do teclado, empurrando os campos para cima. Funciona corretamente no Android 11+ onde `adjustResize` não era confiável.
+
+### Melhorias de interface
+
+#### Android — Relatório de inventário
+
+- **Quantidades com hierarquia visual** (`item_relatorio.xml`, `RelatorioAdapter.kt`): os três valores (Sistema, Contada, Diferença) agora têm label separado do número. A coluna "Contada" (o que o operador bipou) é exibida em 22sp laranja bold — destaque imediato para o valor mais importante. "Sistema" usa 15sp cinza e "Dif." usa 16sp com sinal `+`/`−` colorido. Antes todos os três tinham 13sp e texto corrido ("Sistema: 10.00"), o que dificultava a leitura rápida.
+
+#### Android — Tela principal
+
+- **Switch de modo escuro integrado ao rodapé** (`activity_main.xml`): o toggle foi movido para entre os botões "Sair da conta" e "Servidor", eliminando a linha extra centralizada que ficava acima do rodapé.
+
+#### Android — Lista de itens bipados no scanner
+
+- **Barra lateral laranja e quantidade em destaque** (`item_scanned.xml`): cada item da mini-lista do scanner ganhou uma barra laranja lateral (3dp) para identidade visual e a quantidade foi aumentada para 15sp bold, facilitando a leitura durante a bipagem.
+
+#### Android — Histórico de inventário
+
+- **Itens em MaterialCardView** (`item_historico.xml`): convertido de `LinearLayout` plano para `MaterialCardView` com `cardCornerRadius="12dp"`, ficando visualmente consistente com os demais itens do app.
+
 ### Correções de bugs
 
 #### Android — Scanner Bluetooth: painel de contagem visível

@@ -42,8 +42,8 @@ class RelatorioAdapter(
                 append("Cód. Int.: ${item.cdproduto}")
                 if (!item.codigobarra.isNullOrBlank()) append("  •  ${item.codigobarra}")
             }
-            tvSistema.text = "Sistema: ${item.qtde_sistema?.let { "%.2f".format(it) } ?: "N/D"}"
-            tvContada.text = "Contada: ${item.qtde_contada?.let { "%.2f".format(it) } ?: "0"}"
+            tvSistema.text = item.qtde_sistema?.let { "%.2f".format(it) } ?: "—"
+            tvContada.text = item.qtde_contada?.let { "%.2f".format(it) } ?: "0"
             val entrega = item.qtde_entrega ?: 0.0
             if (entrega > 0.001) {
                 layoutEntrega.visibility = View.VISIBLE
@@ -53,7 +53,8 @@ class RelatorioAdapter(
             }
 
             val dif = item.diferenca ?: 0.0
-            tvDiferenca.text = "Dif: ${"%.2f".format(dif)}"
+            val prefix = if (dif > 0) "+" else ""
+            tvDiferenca.text = "$prefix${"%.2f".format(dif)}"
             tvDiferenca.setTextColor(when {
                 dif > 0 -> Color.parseColor("#2E7D32")
                 dif < 0 -> Color.parseColor("#C62828")
