@@ -552,6 +552,13 @@ class ScannerActivity : TimeoutActivity() {
         binding.tvLastScanQtd.text = "Total neste produto: ${"%.0f".format(qtd)} un."
         binding.tvScanCounter.text = "$totalBipagens un. contadas"
         binding.tvStatus.visibility = View.GONE
+
+        if (scanMode == ScanMode.BLUETOOTH) {
+            binding.tvBtLastProduct.text = nome
+            binding.tvBtLastQtd.text = "%.0f".format(qtd)
+            binding.tvBtTotalCounter.text = "$totalBipagens un. contadas no total"
+            binding.btScanFeedback.visibility = View.VISIBLE
+        }
     }
 
     private fun mostrarErro(msg: String) {

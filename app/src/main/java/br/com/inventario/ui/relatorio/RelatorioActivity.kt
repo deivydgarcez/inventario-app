@@ -2,6 +2,7 @@ package br.com.inventario.ui.relatorio
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.EditText
@@ -49,6 +50,11 @@ class RelatorioActivity : TimeoutActivity() {
     private var consolidarAposCarregar = false
     private var skipNextResume = false
     // perguntouEntrega é persistido no SessionManager para sobreviver à recriação da Activity
+
+    // Buffer BT: engole key events do scanner para não acionar clique no RecyclerView
+    private val btBuffer = StringBuilder()
+    private var btLastKeyTime = 0L
+    private val BT_TIMEOUT_MS = 150L
 
     private val recontarLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -549,6 +555,26 @@ class RelatorioActivity : TimeoutActivity() {
                 else -> { d.dismiss(); consolidar(login, senha, justificativa) }
             }
         }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val now = System.currentTimeMillis()
+            if (now - btLastKeyTime > BT_TIMEOUT_MS) btBuffer.clear()
+            btLastKeyTime = now
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    val codigo = btBuffer.toString().trim()
+                    btBuffer.clear()
+                    if (codigo.length >= 3) return true  // engole ENTER de scanner BT
+                }
+                else -> {
+                    val c = event.unicodeChar.toChar()
+                    if (c.code in 32..126) btBuffer.append(c)
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onSupportNavigateUp(): Boolean {
