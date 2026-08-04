@@ -17,19 +17,18 @@ build/
 config.ini
 *.cfg
 
-# Licença — NUNCA subir para o GitHub
+# Licença — chave privada NUNCA vai pro git; o script gerador vai
 licenca_privada.pem
-gerar_licenca.py
 
 # Banco de dados local
 *.FDB
 *.fdb
 *.gdb
 
-# Executáveis bundlados / instaladores
+# Executáveis bundlados / instaladores (exceto nssm.exe — necessário para compilar)
 WinSW.exe
-nssm.exe
 *.exe
+!nssm.exe
 
 # Spec auto-gerado pelo pyi-makespec (inferior ao instalador.spec manual)
 Instalar-Invec.spec

@@ -24,3 +24,12 @@ local.properties
 # Keystore files
 /keystore/
 /signing/
+
+# Scripts de debug local (caminhos hardcoded, não fazem parte do produto)
+schema_check.py
+test_conn.py
+test_monitor.py
+__pycache__/
+
+# Arquivos temporários de desenvolvimento
+api/query
