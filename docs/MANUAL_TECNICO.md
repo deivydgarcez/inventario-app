@@ -200,10 +200,12 @@ A licença usa criptografia assimétrica **RSA 2048-bit / JWT RS256**.
 
 | Artefato | Localização | Distribuir ao cliente? |
 |---|---|---|
-| `licenca_privada.pem` | `C:\Administracao\inventario-api\` | **NÃO — nunca** |
-| `gerar_licenca.py` | `C:\Administracao\inventario-api\` | **NÃO — nunca** |
+| `licenca_privada.pem` | `api/` na máquina da Pontual (não versionado) | **NÃO — nunca** |
+| `gerar_licenca.py` | `api/gerar_licenca.py` | Apenas internamente (uso Pontual) |
 | Chave pública (embutida) | Dentro do `InvecServidor.exe` compilado | Sim (implicitamente) |
-| `LICENSE_KEY` (JWT) | `C:\Invec\.env` no servidor do cliente | Sim — via instalador |
+| `LICENSE_KEY` (JWT) | `C:\Administracao\Invec\.env` no servidor do cliente | Sim — via instalador |
+
+> Documentação completa do sistema de licença em [`docs/LICENCA.md`](LICENCA.md).
 
 **Payload da licença:**
 ```json
@@ -221,12 +223,14 @@ A licença usa criptografia assimétrica **RSA 2048-bit / JWT RS256**.
 Validação no startup: `main.py` chama `validar_licenca()` no `lifespan` antes de aceitar qualquer requisição. Se inválida ou expirada, `sys.exit(1)` encerra o processo.
 
 **Gerar licença para novo cliente:**
-```bash
-cd C:\Administracao\inventario-api
+```powershell
+cd C:\Administracao\inventario-app\api
 python gerar_licenca.py
-# Preenche: nome do cliente, CNPJ, validade em meses (Enter = permanente)
+# Preenche: nome do cliente, CNPJ, validade em meses (Enter = permanente), machine_id (Enter = sem vínculo)
 # Saída: LICENSE_KEY=eyJhbGciOiJSUzI1NiJ9...
 ```
+
+> Instruções detalhadas em [`docs/LICENCA.md`](LICENCA.md).
 
 ---
 
@@ -563,7 +567,7 @@ Executadas no lifespan do FastAPI antes de aceitar requisições. Cada operaçã
 ### Servidor Windows
 
 ```powershell
-cd C:\Administracao\inventario-api
+cd C:\Administracao\inventario-app\api
 
 # Compilar o servidor
 pyinstaller servidor.spec --clean --noconfirm
@@ -577,11 +581,14 @@ pyinstaller instalador.spec --clean --noconfirm
 ### Gerar licença para novo cliente
 
 ```powershell
+cd C:\Administracao\inventario-app\api
 python gerar_licenca.py
-# Preenche: nome, CNPJ, validade em meses (Enter = permanente)
+# Preenche: nome, CNPJ, validade em meses (Enter = permanente), machine_id (Enter = sem vínculo)
 # Saída: LICENSE_KEY=eyJhbGciOiJSUzI1NiJ9...
 # Enviar esta string ao cliente para colar no campo do instalador
 ```
+
+> Instruções completas em [`docs/LICENCA.md`](LICENCA.md).
 
 ### App Android
 
