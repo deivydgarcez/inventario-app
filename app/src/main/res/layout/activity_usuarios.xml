@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/screenBackground"
+    android:background="@drawable/bg_gradient"
     android:fitsSystemWindows="true">
 
     <androidx.appcompat.widget.Toolbar
@@ -12,8 +12,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:minHeight="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        android:background="@color/glassToolbarFill"
+        android:elevation="0dp"
+        android:theme="@style/Theme.Inventario.ToolbarOverlay"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
 
     <ProgressBar
@@ -32,14 +33,14 @@
         android:text="Ative o acesso mobile definindo uma senha. Somente usuarios com acesso mobile conseguem entrar no app."
         android:textColor="@color/textSecondary"
         android:textSize="13sp"
-        android:background="@color/cardBackground" />
+        android:background="@color/glassToolbarFill" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:paddingVertical="4dp"
+        android:paddingVertical="8dp"
         android:clipToPadding="false" />
 
 </LinearLayout>

@@ -22,6 +22,7 @@ _UUID_INVALIDOS = {
 }
 
 _machine_id_cache: str | None = None  # None = não computado; "" = indisponível
+_payload_cache: dict | None = None
 
 
 def get_machine_id() -> str:
@@ -110,4 +111,17 @@ def validar_licenca() -> dict:
                 "Solicite uma nova licenca para este equipamento."
             )
 
+    global _payload_cache
+    _payload_cache = payload
     return payload
+
+
+def get_max_dispositivos() -> int | None:
+    """Retorna max_dispositivos da licença, ou None se ilimitado."""
+    v = (_payload_cache or {}).get("max_dispositivos")
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None

@@ -1,9 +1,14 @@
 package br.com.inventario.ui.main
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
-import android.widget.EditText
+import android.view.ViewAnimationUtils
+import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
@@ -23,6 +28,7 @@ import br.com.inventario.ui.usuarios.UsuariosActivity
 import br.com.inventario.util.ServerMonitor
 import br.com.inventario.util.SessionManager
 import kotlinx.coroutines.launch
+import android.widget.EditText
 
 class MainActivity : TimeoutActivity() {
 
@@ -42,15 +48,10 @@ class MainActivity : TimeoutActivity() {
         ServerMonitor.startOrKeep(session, lifecycleScope)
 
         atualizarHeader()
-
         atualizarIconeDarkMode()
-        binding.btnDarkMode.setOnClickListener {
-            val novo = !session.isDarkMode()
-            session.saveDarkMode(novo)
-            AppCompatDelegate.setDefaultNightMode(
-                if (novo) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-            )
-            atualizarIconeDarkMode()
+
+        binding.btnDarkMode.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked != session.isDarkMode()) toggleDarkModeWithReveal(isChecked)
         }
 
         binding.btnSelecionarDeposito.setOnClickListener { carregarDepositos() }
@@ -68,9 +69,44 @@ class MainActivity : TimeoutActivity() {
         atualizarHeader()
     }
 
+    private fun toggleDarkModeWithReveal(novo: Boolean) {
+        val newBgColor = if (novo) Color.parseColor("#1C2128") else Color.parseColor("#E8ECEF")
+
+        val rootView = binding.root
+        val overlayView = View(this).apply { setBackgroundColor(newBgColor) }
+        (rootView as ViewGroup).overlay.add(overlayView)
+        overlayView.layout(0, 0, rootView.width, rootView.height)
+
+        val loc = IntArray(2)
+        binding.btnDarkMode.getLocationInWindow(loc)
+        val cx = loc[0] + binding.btnDarkMode.width / 2
+        val cy = loc[1] + binding.btnDarkMode.height / 2
+        val maxRadius = Math.hypot(rootView.width.toDouble(), rootView.height.toDouble()).toFloat()
+
+        val reveal = ViewAnimationUtils.createCircularReveal(overlayView, cx, cy, 0f, maxRadius)
+        reveal.duration = 420
+        reveal.interpolator = AccelerateDecelerateInterpolator()
+        reveal.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                session.saveDarkMode(novo)
+                binding.ivDarkModeIcon.setImageResource(
+                    if (novo) R.drawable.ic_light_mode else R.drawable.ic_dark_mode
+                )
+                AppCompatDelegate.setDefaultNightMode(
+                    if (novo) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+                )
+                (rootView as ViewGroup).overlay.remove(overlayView)
+            }
+        })
+        reveal.start()
+    }
+
     private fun atualizarIconeDarkMode() {
-        val icon = if (session.isDarkMode()) R.drawable.ic_light_mode else R.drawable.ic_dark_mode
-        binding.btnDarkMode.setImageResource(icon)
+        val isDark = session.isDarkMode()
+        binding.btnDarkMode.isChecked = isDark
+        binding.ivDarkModeIcon.setImageResource(
+            if (isDark) R.drawable.ic_light_mode else R.drawable.ic_dark_mode
+        )
     }
 
     private fun atualizarHeader() {
@@ -137,11 +173,7 @@ class MainActivity : TimeoutActivity() {
                     depositos = cached
                     mostrarDialogDeposito(fromCache = true)
                 } else {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Sem conexão. Conecte-se ao servidor ao menos uma vez para usar offline.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this@MainActivity, "Sem conexão. Conecte-se ao servidor ao menos uma vez para usar offline.", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -149,28 +181,19 @@ class MainActivity : TimeoutActivity() {
 
     private fun mostrarDialogDeposito(fromCache: Boolean = false) {
         val nomes = depositos.map { it.deposito }.toTypedArray()
-        val titulo = if (fromCache) "Selecionar Depósito (cache)" else "Selecionar Depósito"
         AlertDialog.Builder(this)
-            .setTitle(titulo)
-            .setItems(nomes) { _, index ->
-                val dep = depositos[index]
-                iniciarDeposito(dep)
-            }
+            .setTitle(if (fromCache) "Selecionar Depósito (cache)" else "Selecionar Depósito")
+            .setItems(nomes) { _, index -> iniciarDeposito(depositos[index]) }
             .show()
     }
 
     private fun iniciarDeposito(dep: Deposito) {
-        // BUG-2: guarda depósito/sessão antigos antes de trocar
         val oldDepositoId = session.getCdDeposito()
-        val oldSessionId  = if (oldDepositoId != -1 && oldDepositoId != dep.cddeposito)
-            session.getSessionId() else null
+        val oldSessionId = if (oldDepositoId != -1 && oldDepositoId != dep.cddeposito) session.getSessionId() else null
 
-        if (oldDepositoId != dep.cddeposito) {
-            session.resetEntregaFlag()
-        }
+        if (oldDepositoId != dep.cddeposito) session.resetEntregaFlag()
         session.saveDeposito(dep.cddeposito, dep.deposito)
 
-        // Garante sessão ativa para este depósito
         val sessionId = session.getOuCriarSession()
 
         atualizarHeader()
@@ -180,35 +203,19 @@ class MainActivity : TimeoutActivity() {
         lifecycleScope.launch {
             try {
                 val api = RetrofitClient.build(session)
-
-                // BUG-2: encerra sessão do depósito anterior no servidor (não bloqueia UI em caso de falha)
                 if (oldSessionId != null && ServerMonitor.isOnline.value) {
                     try { api.encerrarSessao(oldSessionId) } catch (_: Exception) {}
                 }
-
                 if (ServerMonitor.isOnline.value) {
-                    try {
-                        api.iniciarSessao(IniciarSessaoRequest(
-                            sessionId  = sessionId,
-                            cddeposito = dep.cddeposito,
-                            operador   = session.getOperador(),
-                        ))
-                    } catch (_: Exception) { }
+                    try { api.iniciarSessao(IniciarSessaoRequest(sessionId = sessionId, cddeposito = dep.cddeposito, operador = session.getOperador())) } catch (_: Exception) {}
                 }
-
                 val repo = CatalogoRepository(db, api, session)
                 repo.sincronizarCatalogo(dep.cddeposito) { baixados, total ->
-                    runOnUiThread {
-                        binding.tvDeposito.text =
-                            "Depósito: ${dep.deposito} · baixando $baixados/$total..."
-                    }
+                    runOnUiThread { binding.tvDeposito.text = "Depósito: ${dep.deposito} · baixando $baixados/$total..." }
                 }
             } catch (_: Exception) {
-                val cached = db.catalogo.count(dep.cddeposito)
-                runOnUiThread {
-                    if (cached == 0) {
-                        Toast.makeText(this@MainActivity, "Sem conexão — catálogo não baixado", Toast.LENGTH_LONG).show()
-                    }
+                if (db.catalogo.count(dep.cddeposito) == 0) {
+                    runOnUiThread { Toast.makeText(this@MainActivity, "Sem conexão — catálogo não baixado", Toast.LENGTH_LONG).show() }
                 }
             } finally {
                 runOnUiThread {
@@ -220,28 +227,18 @@ class MainActivity : TimeoutActivity() {
     }
 
     private fun abrirScanner() {
-        if (session.getCdDeposito() == -1) {
-            Toast.makeText(this, "Selecione um depósito primeiro", Toast.LENGTH_SHORT).show()
-            return
-        }
+        if (session.getCdDeposito() == -1) { Toast.makeText(this, "Selecione um depósito primeiro", Toast.LENGTH_SHORT).show(); return }
         startActivity(Intent(this, ScannerActivity::class.java))
     }
 
     private fun abrirRelatorio() {
-        if (session.getCdDeposito() == -1) {
-            Toast.makeText(this, "Selecione um depósito primeiro", Toast.LENGTH_SHORT).show()
-            return
-        }
+        if (session.getCdDeposito() == -1) { Toast.makeText(this, "Selecione um depósito primeiro", Toast.LENGTH_SHORT).show(); return }
         startActivity(Intent(this, RelatorioActivity::class.java))
     }
 
     private fun sair() {
-        val online = ServerMonitor.isOnline.value
-        val mensagem = if (online) {
-            "Deseja sair da conta?"
-        } else {
-            "Você está sem conexão com o servidor.\n\nSe sair, só conseguirá fazer login novamente quando estiver conectado ao servidor."
-        }
+        val mensagem = if (ServerMonitor.isOnline.value) "Deseja sair da conta?"
+        else "Você está sem conexão com o servidor.\n\nSe sair, só conseguirá fazer login novamente quando estiver conectado ao servidor."
         AlertDialog.Builder(this)
             .setTitle("Sair da conta")
             .setMessage(mensagem)
@@ -257,33 +254,22 @@ class MainActivity : TimeoutActivity() {
             if (api != null) {
                 lifecycleScope.launch {
                     try { kotlinx.coroutines.withTimeoutOrNull(3_000) { api.encerrarSessao(sessionId) } } catch (_: Exception) {}
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        db.bipag.deleteAllDaSessao(sessionId)
-                    }
-                    session.logout()
-                    RetrofitClient.reset()
-                    startActivity(Intent(this@MainActivity, LoginActivity::class.java))
-                    finish()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { db.bipag.deleteAllDaSessao(sessionId) }
+                    session.logout(); RetrofitClient.reset()
+                    startActivity(Intent(this@MainActivity, LoginActivity::class.java)); finish()
                 }
                 return
             }
         }
-        // Offline ou sem API: ainda limpa dados locais da sessão antes de encerrar
         if (sessionId != null) {
             lifecycleScope.launch {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    db.bipag.deleteAllDaSessao(sessionId)
-                }
-                session.logout()
-                RetrofitClient.reset()
-                startActivity(Intent(this@MainActivity, LoginActivity::class.java))
-                finish()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { db.bipag.deleteAllDaSessao(sessionId) }
+                session.logout(); RetrofitClient.reset()
+                startActivity(Intent(this@MainActivity, LoginActivity::class.java)); finish()
             }
             return
         }
-        session.logout()
-        RetrofitClient.reset()
-        startActivity(Intent(this, LoginActivity::class.java))
-        finish()
+        session.logout(); RetrofitClient.reset()
+        startActivity(Intent(this, LoginActivity::class.java)); finish()
     }
 }

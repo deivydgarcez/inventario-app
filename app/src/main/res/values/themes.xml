@@ -7,7 +7,8 @@
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorSecondary">@color/colorAccent</item>
         <item name="colorOnSecondary">#FFFFFF</item>
-        <item name="android:windowBackground">@color/screenBackground</item>
+        <item name="android:windowBackground">@color/gradientStart</item>
+        <item name="android:statusBarColor">@color/gradientStart</item>
     </style>
 
     <!-- Sem barra de título (Login, Main) -->
@@ -18,6 +19,16 @@
         <item name="colorSecondary">@color/colorAccent</item>
         <item name="colorOnSecondary">#FFFFFF</item>
         <item name="android:windowBackground">@color/screenBackground</item>
-        <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+        <item name="android:statusBarColor">@color/gradientStart</item>
+    </style>
+
+    <!-- Toolbar overlay: dark text/icons for light backgrounds -->
+    <style name="Theme.Inventario.ToolbarOverlay" parent="ThemeOverlay.AppCompat.Light" />
+
+    <!-- Splash -->
+    <style name="Theme.Inventario.Splash" parent="Theme.Inventario.NoBar">
+        <item name="android:windowBackground">@color/atomicOrange</item>
+        <item name="android:statusBarColor">@color/atomicOrange</item>
+        <item name="android:navigationBarColor">@color/atomicOrange</item>
     </style>
 </resources>

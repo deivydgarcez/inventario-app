@@ -3,6 +3,8 @@ package br.com.inventario.ui.scanner
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
@@ -63,6 +65,8 @@ class ScannerActivity : TimeoutActivity() {
     private var scanMode = ScanMode.CAMERA
     private var totalBipagens = 0
 
+    private var toneGen: ToneGenerator? = null
+
     private val btBuffer = StringBuilder()
     private var btLastKeyTime = 0L
     private val BT_TIMEOUT_MS = 150L
@@ -80,6 +84,7 @@ class ScannerActivity : TimeoutActivity() {
         session = SessionManager(this)
         db = InvecDatabase.getInstance(this)
         cameraExecutor = Executors.newSingleThreadExecutor()
+        toneGen = try { ToneGenerator(AudioManager.STREAM_MUSIC, 80) } catch (_: Exception) { null }
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.title = session.getNomeDeposito() ?: "Scanner"
@@ -218,13 +223,31 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     private fun digitarManualmente() {
+        AlertDialog.Builder(this)
+            .setTitle("Buscar produto")
+            .setItems(arrayOf(
+                "Por código de barras",
+                "Por código do produto (nº)",
+                "Por nome / descrição",
+            )) { _, which ->
+                when (which) {
+                    0 -> digitarCodigoBarras()
+                    1 -> digitarCodigoProduto()
+                    2 -> digitarNomeProduto()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun digitarCodigoBarras() {
         val input = EditText(this).apply {
             hint = "Digite o código de barras"
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             setPadding(48, 32, 48, 32)
         }
         AlertDialog.Builder(this)
-            .setTitle("Código manual")
+            .setTitle("Código de barras")
             .setView(input)
             .setPositiveButton("Buscar") { _, _ ->
                 val codigo = input.text.toString().trim()
@@ -238,6 +261,162 @@ class ScannerActivity : TimeoutActivity() {
             }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    private fun digitarCodigoProduto() {
+        val input = EditText(this).apply {
+            hint = "Código do produto (número)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setPadding(48, 32, 48, 32)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Código do produto")
+            .setView(input)
+            .setPositiveButton("Buscar") { _, _ ->
+                val codigo = input.text.toString().trim().toIntOrNull()
+                if (codigo != null && !processando) {
+                    processando = true
+                    binding.tvStatus.text = "Buscando produto #$codigo..."
+                    binding.tvStatus.visibility = View.VISIBLE
+                    buscarPorCdproduto(codigo)
+                } else if (codigo == null) {
+                    Toast.makeText(this, "Informe um número válido", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun digitarNomeProduto() {
+        val input = EditText(this).apply {
+            hint = "Nome ou parte do nome"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setPadding(48, 32, 48, 32)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Buscar por nome")
+            .setView(input)
+            .setPositiveButton("Buscar") { _, _ ->
+                val query = input.text.toString().trim()
+                if (query.length >= 2) {
+                    if (processando) return@setPositiveButton
+                    processando = true
+                    binding.tvStatus.text = "Buscando '$query'..."
+                    binding.tvStatus.visibility = View.VISIBLE
+                    buscarPorNome(query)
+                } else {
+                    Toast.makeText(this, "Digite pelo menos 2 caracteres", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar") { _, _ -> resetarEstado() }
+            .show()
+    }
+
+    private fun buscarPorCdproduto(cdproduto: Int) {
+        val cddeposito = session.getCdDeposito()
+        val sessionId  = session.getOuCriarSession()
+        lifecycleScope.launch {
+            var produto: Produto? = null
+            if (ServerMonitor.isOnline.value) {
+                try {
+                    val api = RetrofitClient.build(session)
+                    val resp = api.buscarPorCdproduto(cdproduto, cddeposito)
+                    when {
+                        resp.isSuccessful -> {
+                            produto = resp.body()!!
+                            val barcode = produto.codigobarra
+                            if (!barcode.isNullOrBlank()) {
+                                db.catalogo.upsertBatch(listOf(ProdutoCache(
+                                    codigobarra = barcode,
+                                    cddeposito  = cddeposito,
+                                    cdproduto   = produto.cdproduto,
+                                    produto     = produto.produto,
+                                    qtdeatual   = produto.qtdeatual ?: 0.0,
+                                )))
+                            }
+                        }
+                        resp.code() == 404 -> {
+                            val detail = try {
+                                org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
+                            } catch (_: Exception) { "Produto não encontrado" }
+                            if (detail == "Produto inativo") mostrarProdutoInativo()
+                            else mostrarErro(detail)
+                            resetarEstado()
+                            return@launch
+                        }
+                        else -> {
+                            produto = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                db.catalogo.getByCdproduto(cdproduto, cddeposito)
+                            }?.let { Produto(it.cdproduto, it.produto, it.codigobarra, it.qtdeatual) }
+                        }
+                    }
+                } catch (_: Exception) {
+                    produto = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        db.catalogo.getByCdproduto(cdproduto, cddeposito)
+                    }?.let { Produto(it.cdproduto, it.produto, it.codigobarra, it.qtdeatual) }
+                }
+            } else {
+                produto = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    db.catalogo.getByCdproduto(cdproduto, cddeposito)
+                }?.let { Produto(it.cdproduto, it.produto, it.codigobarra, it.qtdeatual) }
+            }
+
+            if (produto != null) {
+                registrarBipagem(produto, sessionId)
+            } else {
+                mostrarErro("Produto #$cdproduto não encontrado")
+                resetarEstado()
+            }
+        }
+    }
+
+    private fun buscarPorNome(query: String) {
+        val cddeposito = session.getCdDeposito()
+        val sessionId  = session.getOuCriarSession()
+        lifecycleScope.launch {
+            var resultados: List<Produto> = emptyList()
+            if (ServerMonitor.isOnline.value) {
+                try {
+                    val api = RetrofitClient.build(session)
+                    val resp = api.buscarPorDescricao(query, cddeposito)
+                    if (resp.isSuccessful) {
+                        resultados = resp.body() ?: emptyList()
+                    }
+                } catch (_: Exception) {
+                    resultados = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        db.catalogo.searchByNome(query, cddeposito)
+                    }.map { Produto(it.cdproduto, it.produto, it.codigobarra, it.qtdeatual) }
+                }
+            } else {
+                resultados = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    db.catalogo.searchByNome(query, cddeposito)
+                }.map { Produto(it.cdproduto, it.produto, it.codigobarra, it.qtdeatual) }
+            }
+
+            binding.tvStatus.visibility = View.GONE
+
+            when {
+                resultados.isEmpty() -> {
+                    mostrarErro("Nenhum produto encontrado para '$query'")
+                    resetarEstado()
+                }
+                resultados.size == 1 -> {
+                    processando = true
+                    registrarBipagem(resultados[0], sessionId)
+                }
+                else -> {
+                    val nomes = resultados.map { "${it.cdproduto} — ${it.produto}" }.toTypedArray()
+                    AlertDialog.Builder(this@ScannerActivity)
+                        .setTitle("Selecione o produto")
+                        .setItems(nomes) { _, idx ->
+                            processando = true
+                            registrarBipagem(resultados[idx], sessionId)
+                        }
+                        .setNegativeButton("Cancelar") { _, _ -> resetarEstado() }
+                        .show()
+                }
+            }
+        }
     }
 
     private fun aplicarModo(modo: ScanMode) {
@@ -459,7 +638,7 @@ class ScannerActivity : TimeoutActivity() {
         lifecycleScope.launch {
             try { _registrarBipagemInterno(produto, sessionId, cddeposito) }
             catch (e: Exception) {
-                mostrarErro("Erro ao salvar scan: ${e.message}")
+                mostrarErro("Erro ao salvar scan: ${e.message} [INV-S04]")
                 resetarEstado()
             }
         }
@@ -539,6 +718,7 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     private fun mostrarProdutoInativo() {
+        tocarSomErro()
         AlertDialog.Builder(this)
             .setTitle("Produto Inativo")
             .setMessage("Este produto está inativo no sistema e não pode ser bipado.")
@@ -546,7 +726,16 @@ class ScannerActivity : TimeoutActivity() {
             .show()
     }
 
+    private fun tocarSomSucesso() {
+        toneGen?.startTone(ToneGenerator.TONE_PROP_ACK, 150)
+    }
+
+    private fun tocarSomErro() {
+        toneGen?.startTone(ToneGenerator.TONE_PROP_NACK, 300)
+    }
+
     private fun mostrarUltimoBipado(nome: String, qtd: Double) {
+        tocarSomSucesso()
         binding.lastScanPanel.visibility = View.VISIBLE
         binding.tvLastScanNome.text = "✓ $nome"
         binding.tvLastScanQtd.text = "Total neste produto: ${"%.0f".format(qtd)} un."
@@ -562,6 +751,7 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     private fun mostrarErro(msg: String) {
+        tocarSomErro()
         binding.tvStatus.text = "⚠ $msg"
         binding.tvStatus.visibility = View.VISIBLE
     }
@@ -620,15 +810,15 @@ class ScannerActivity : TimeoutActivity() {
                                 if (resp.code() == 404) {
                                     val pendentes = withContext(Dispatchers.IO) { db.bipag.countPendentes(sid) }
                                     if (pendentes > 0)
-                                        mostrarErro("Itens pendentes de sync. Aguarde e tente novamente.")
+                                        mostrarErro("Itens pendentes de sync. Aguarde e tente novamente. [INV-S05]")
                                     else
-                                        mostrarErro("Erro ao atualizar: $detail")
+                                        mostrarErro("Erro ao atualizar: $detail [INV-S06]")
                                 } else {
-                                    mostrarErro("Erro ao atualizar: $detail")
+                                    mostrarErro("Erro ao atualizar: $detail [INV-S06]")
                                 }
                             }
                         } catch (e: Exception) {
-                            mostrarErro("Erro: ${e.message}")
+                            mostrarErro("Erro: ${e.message} [INV-S07]")
                         }
                     } else {
                         // Offline: salva delta no Room; o lote vai corrigir o servidor ao reconectar
@@ -672,13 +862,14 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        val btItem    = menu.findItem(br.com.inventario.R.id.action_bluetooth)
-        val flashItem = menu.findItem(br.com.inventario.R.id.action_flash)
-        val emCamara  = scanMode == ScanMode.CAMERA
+        val btItem      = menu.findItem(br.com.inventario.R.id.action_bluetooth)
+        val flashItem   = menu.findItem(br.com.inventario.R.id.action_flash)
+        val zerarItem   = menu.findItem(br.com.inventario.R.id.action_zerar_contagem)
+        val emCamara    = scanMode == ScanMode.CAMERA
         flashItem?.isVisible = emCamara
         flashItem?.icon?.setTint(if (flashLigado) Color.parseColor("#FFD700") else Color.WHITE)
-        // BT ativo (laranja) quando em modo Bluetooth; branco quando em modo câmera
         btItem?.icon?.setTint(if (emCamara) Color.WHITE else Color.parseColor("#CC5B2A"))
+        zerarItem?.isVisible = session.isSupervisor()
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -692,7 +883,77 @@ class ScannerActivity : TimeoutActivity() {
                 invalidateOptionsMenu()
                 true
             }
+            br.com.inventario.R.id.action_zerar_contagem -> { confirmarZerarContagem(); true }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun confirmarZerarContagem() {
+        val sid = session.getSessionId() ?: run {
+            Toast.makeText(this, "Nenhuma sessão ativa", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val etJustificativa = EditText(this).apply {
+            hint = "Por que precisa recomeçar? (obrigatório)"
+            minLines = 2
+            setPadding(48, 24, 48, 24)
+        }
+        val d = AlertDialog.Builder(this)
+            .setTitle("Recomeçar contagem")
+            .setMessage("Isso apagará TODA a contagem atual do depósito ${session.getNomeDeposito()}.\n\nInforme o motivo:")
+            .setView(etJustificativa)
+            .setPositiveButton("Recomeçar", null)
+            .setNegativeButton("Cancelar", null)
+            .show()
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val justificativa = etJustificativa.text.toString().trim()
+            if (justificativa.length < 10) {
+                etJustificativa.error = "Descreva o motivo com pelo menos 10 caracteres"
+                return@setOnClickListener
+            }
+            d.dismiss()
+            executarZerarContagem(sid, justificativa)
+        }
+    }
+
+    private fun executarZerarContagem(sessionId: String, justificativa: String) {
+        lifecycleScope.launch {
+            if (!ServerMonitor.isOnline.value) {
+                Toast.makeText(this@ScannerActivity, "Requer conexão com o servidor", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            try {
+                val api = RetrofitClient.build(session)
+                val resp = api.zerarContagem(br.com.inventario.data.model.ZerarContagemRequest(
+                    cddeposito    = session.getCdDeposito(),
+                    sessionId     = sessionId,
+                    justificativa = justificativa,
+                    deviceId      = session.getDeviceId(),
+                ))
+                if (resp.isSuccessful) {
+                    withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        db.bipag.deleteAllDaSessao(sessionId)
+                    }
+                    session.iniciarNovaSession()
+                    scannedItems.clear()
+                    scannedAdapter.notifyDataSetChanged()
+                    binding.rvScanned.visibility = View.GONE
+                    totalBipagens = 0
+                    binding.tvScanCounter.text = "0 un. contadas"
+                    binding.lastScanPanel.visibility = View.GONE
+                    val raw = resp.body()?.get("total_removidos")
+                    val total = (raw as? Double)?.toInt() ?: (raw as? Int) ?: 0
+                    Toast.makeText(this@ScannerActivity, "Contagem reiniciada. $total item(ns) removido(s).", Toast.LENGTH_LONG).show()
+                    atualizarIndicadorConexao(true)
+                } else {
+                    val detail = try {
+                        org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
+                    } catch (_: Exception) { "Erro ${resp.code()}" }
+                    Toast.makeText(this@ScannerActivity, "$detail [INV-S08]", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@ScannerActivity, "Erro: ${e.message} [INV-S09]", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -770,5 +1031,7 @@ class ScannerActivity : TimeoutActivity() {
         super.onDestroy()
         cameraExecutor.shutdown()
         barcodeScanner.close()
+        toneGen?.release()
+        toneGen = null
     }
 }

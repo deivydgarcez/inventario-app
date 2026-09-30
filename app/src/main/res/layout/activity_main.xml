@@ -4,69 +4,81 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/screenBackground"
+    android:background="@drawable/bg_gradient"
     android:fitsSystemWindows="true">
 
     <!-- Header -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:background="@color/colorPrimary"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:paddingStart="24dp"
-        android:paddingEnd="24dp"
+        android:paddingEnd="16dp"
         android:paddingTop="20dp"
-        android:paddingBottom="18dp"
-        android:elevation="4dp">
+        android:paddingBottom="16dp">
 
-        <!-- Linha do topo: logo à esquerda, modo escuro à direita -->
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="10dp">
+            android:layout_weight="1"
+            android:orientation="vertical">
 
             <ImageView
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
+                android:layout_width="130dp"
+                android:layout_height="40dp"
                 android:adjustViewBounds="true"
                 android:scaleType="fitStart"
                 android:src="@drawable/logo_pontual"
-                android:tint="#FFFFFF"
+                android:tint="@color/atomicOrange"
                 android:contentDescription="Pontual Tecnologia" />
 
-            <ImageButton
-                android:id="@+id/btnDarkMode"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:padding="8dp"
-                android:tint="#FFFFFF"
-                android:contentDescription="Modo escuro" />
+            <TextView
+                android:id="@+id/tvNome"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Olá!"
+                android:textColor="@color/colorPrimaryText"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvDeposito"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Nenhum depósito selecionado"
+                android:textColor="@color/textSecondary"
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
 
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/tvNome"
+        <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Olá!"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:layout_height="40dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-        <TextView
-            android:id="@+id/tvDeposito"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:text="Nenhum depósito selecionado"
-            android:textColor="@color/headerTextSecondary"
-            android:textSize="13sp"
-            android:maxLines="2"
-            android:ellipsize="end" />
+            <ImageView
+                android:id="@+id/ivDarkModeIcon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_dark_mode"
+                android:tint="@color/atomicOrange"
+                android:contentDescription="Modo escuro" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/btnDarkMode"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:paddingStart="2dp"
+                app:thumbTint="@color/switch_thumb_color"
+                app:trackTint="@color/switch_track_color" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
@@ -79,108 +91,244 @@
         android:padding="20dp">
 
         <!-- Selecionar Depósito -->
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btnSelecionarDeposito"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="60dp"
             android:layout_marginBottom="16dp"
-            android:text="Selecionar Depósito"
-            android:textSize="15sp"
-            app:icon="@drawable/ic_store"
-            app:iconTint="?attr/colorPrimary"
-            app:iconSize="22dp"
-            app:cornerRadius="10dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:background="@drawable/bg_glass_card"
+            android:foreground="?attr/selectableItemBackground"
+            android:clipToOutline="true"
+            android:clickable="true"
+            android:focusable="true">
 
-        <!-- Iniciar Coleta — botão principal, ocupa o espaço restante -->
-        <com.google.android.material.button.MaterialButton
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_store"
+                android:tint="@color/atomicOrange"
+                android:contentDescription="Depósito" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="14dp"
+                android:text="Selecionar Depósito"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:textColor="@color/colorPrimaryText" />
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/textSecondary"
+                android:contentDescription="" />
+
+        </LinearLayout>
+
+        <!-- Iniciar Coleta (CTA principal) -->
+        <LinearLayout
             android:id="@+id/btnBipar"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:layout_marginBottom="16dp"
-            android:text="Iniciar Coleta"
-            android:textSize="20sp"
-            android:textStyle="bold"
             android:enabled="false"
-            app:icon="@drawable/ic_camera"
-            app:iconSize="28dp"
-            app:iconGravity="textStart"
-            app:iconPadding="12dp"
-            app:cornerRadius="14dp" />
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/bg_glass_primary"
+            android:foreground="?attr/selectableItemBackground"
+            android:clipToOutline="true"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_camera"
+                android:tint="#FFFFFF"
+                android:layout_marginBottom="10dp"
+                android:contentDescription="Câmera" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Iniciar Coleta"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF" />
+
+        </LinearLayout>
 
         <!-- Ver Relatório -->
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btnRelatorio"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="60dp"
             android:layout_marginBottom="12dp"
-            android:text="Ver Relatório"
-            android:textSize="15sp"
             android:enabled="false"
-            app:icon="@drawable/ic_report"
-            app:iconTint="?attr/colorPrimary"
-            app:iconSize="22dp"
-            app:cornerRadius="10dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:background="@drawable/bg_glass_card"
+            android:foreground="?attr/selectableItemBackground"
+            android:clipToOutline="true"
+            android:clickable="true"
+            android:focusable="true">
 
-        <com.google.android.material.button.MaterialButton
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_report"
+                android:tint="@color/iceCreamBlueDark"
+                android:contentDescription="Relatório" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="14dp"
+                android:text="Ver Relatório"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:textColor="@color/colorPrimaryText" />
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/textSecondary"
+                android:contentDescription="" />
+
+        </LinearLayout>
+
+        <!-- Usuários (admin only) -->
+        <LinearLayout
             android:id="@+id/btnUsuarios"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="52dp"
             android:layout_marginTop="4dp"
-            android:text="Acesso Mobile — Usuários"
-            android:textSize="14sp"
             android:visibility="gone"
-            app:icon="@drawable/ic_person"
-            app:iconTint="?attr/colorPrimary"
-            app:iconSize="20dp"
-            app:cornerRadius="10dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:background="@drawable/bg_glass_card"
+            android:foreground="?attr/selectableItemBackground"
+            android:clipToOutline="true"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_person"
+                android:tint="@color/iceCreamBlueDark"
+                android:contentDescription="Usuários" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="14dp"
+                android:text="Acesso Mobile — Usuários"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="@color/colorPrimaryText" />
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/textSecondary"
+                android:contentDescription="" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
-    <!-- Footer: Sair | Servidor -->
+    <!-- Footer: Sair | Configurações -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
+        android:layout_marginBottom="16dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="16dp">
+        android:paddingHorizontal="20dp">
 
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btnSair"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="wrap_content"
             android:layout_height="44dp"
-            android:text="Sair da conta"
-            android:textColor="@color/textSecondary"
-            android:textSize="13sp"
-            app:icon="@drawable/ic_logout"
-            app:iconTint="@color/textSecondary"
-            app:iconSize="18dp"
-            app:strokeColor="@color/textSecondary"
-            app:cornerRadius="22dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:background="@drawable/bg_glass_card"
+            android:foreground="?attr/selectableItemBackground"
+            android:clipToOutline="true"
+            android:focusable="true"
+            android:clickable="true">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_logout"
+                android:tint="@color/textSecondary"
+                android:contentDescription="" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Sair da conta"
+                android:textSize="13sp"
+                android:textColor="@color/textSecondary" />
+
+        </LinearLayout>
 
         <View
             android:layout_width="0dp"
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btnConfigurarServidor"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="wrap_content"
             android:layout_height="44dp"
-            android:text="Servidor"
-            android:textColor="@color/textSecondary"
-            android:textSize="13sp"
-            app:icon="@drawable/ic_settings"
-            app:iconTint="@color/textSecondary"
-            app:iconSize="16dp"
-            app:strokeColor="@color/textSecondary"
-            app:cornerRadius="22dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:background="@drawable/bg_glass_card"
+            android:foreground="?attr/selectableItemBackground"
+            android:clipToOutline="true"
+            android:focusable="true"
+            android:clickable="true">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:src="@drawable/ic_settings"
+                android:tint="@color/textSecondary"
+                android:contentDescription="" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Configurações"
+                android:textSize="13sp"
+                android:textColor="@color/textSecondary" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/screenBackground"
+    android:background="@drawable/bg_gradient"
     android:fitsSystemWindows="true">
 
     <ScrollView
@@ -16,205 +16,248 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:paddingHorizontal="28dp"
+            android:paddingTop="64dp"
+            android:paddingBottom="32dp">
 
-            <!-- Logo Pontual Tecnologia -->
+            <!-- Logo -->
+            <ImageView
+                android:layout_width="160dp"
+                android:layout_height="52dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="8dp"
+                android:adjustViewBounds="true"
+                android:scaleType="fitCenter"
+                android:src="@drawable/logo_pontual"
+                android:tint="@color/colorPrimary"
+                android:contentDescription="Pontual Tecnologia" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="40dp"
+                android:text="Inventário de Estoque"
+                android:textSize="13sp"
+                android:letterSpacing="0.08"
+                android:textColor="@color/textSecondary" />
+
+            <!-- Card login glass -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
                 android:orientation="vertical"
-                android:gravity="center"
-                android:paddingTop="40dp"
-                android:paddingBottom="28dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:adjustViewBounds="true"
-                    android:scaleType="fitCenter"
-                    android:maxHeight="80dp"
-                    android:src="@drawable/logo_pontual"
-                    android:contentDescription="Pontual Tecnologia" />
+                android:padding="24dp"
+                android:background="@drawable/bg_glass_card"
+                android:clipToOutline="true">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="Inventário de Estoque"
-                    android:textSize="16sp"
-                    android:textColor="@color/textSecondary" />
+                    android:layout_marginBottom="20dp"
+                    android:text="Entrar na conta"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/colorPrimaryText" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Login"
+                    android:layout_marginBottom="12dp"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etLogin"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:imeOptions="actionNext"
+                        android:inputType="text" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Senha"
+                    android:layout_marginBottom="24dp"
+                    app:passwordToggleEnabled="true"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etSenha"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:imeOptions="actionDone"
+                        android:inputType="textPassword" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <ProgressBar
+                    android:id="@+id/progressBar"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:visibility="gone"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Login button glass primary -->
+                <LinearLayout
+                    android:id="@+id/btnEntrarNm"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:background="@drawable/bg_glass_primary"
+                    android:foreground="?attr/selectableItemBackground"
+                    android:clipToOutline="true"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:id="@+id/btnEntrar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:text="Entrar"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="#FFFFFF" />
+
+                </LinearLayout>
 
             </LinearLayout>
 
-            <!-- Card com campos de login -->
-            <com.google.android.material.card.MaterialCardView
+            <!-- Seção servidor -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="CONEXÃO COM SERVIDOR"
+                android:textSize="11sp"
+                android:letterSpacing="0.12"
+                android:textStyle="bold"
+                android:textColor="@color/sectionHeader" />
+
+            <!-- Server glass card -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                app:cardElevation="2dp"
-                app:cardCornerRadius="14dp">
+                android:orientation="vertical"
+                android:padding="20dp"
+                android:background="@drawable/bg_glass_card"
+                android:clipToOutline="true">
 
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="URL (ex: http://192.168.1.10:8000/)"
+                    android:layout_marginBottom="12dp"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etServerUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textUri" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Salvar / Testar -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="Login"
-                        android:layout_marginBottom="12dp"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/etLogin"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:imeOptions="actionNext"
-                            android:inputType="text" />
-
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="Senha"
-                        android:layout_marginBottom="20dp"
-                        app:passwordToggleEnabled="true"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/etSenha"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:imeOptions="actionDone"
-                            android:inputType="textPassword" />
-
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <ProgressBar
-                        android:id="@+id/progressBar"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:visibility="gone"
-                        android:layout_marginBottom="8dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnEntrar"
-                        android:layout_width="match_parent"
-                        android:layout_height="52dp"
-                        android:text="Entrar"
-                        android:textSize="16sp"
-                        app:cornerRadius="10dp" />
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Configurações de servidor -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"
-                app:cardElevation="1dp"
-                app:cardCornerRadius="14dp"
-                app:strokeColor="@color/dividerColor"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                    android:orientation="horizontal">
 
                     <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="12dp"
-                        android:text="Configuração do servidor"
-                        android:textSize="13sp"
+                        android:id="@+id/btnConfigurarServidor"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_weight="3"
+                        android:layout_marginEnd="8dp"
+                        android:gravity="center"
+                        android:text="Salvar"
+                        android:textSize="14sp"
                         android:textStyle="bold"
-                        android:textColor="@color/textSecondary" />
+                        android:textColor="@color/atomicOrange"
+                        android:background="@drawable/bg_glass_card"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:clipToOutline="true"
+                        android:clickable="true"
+                        android:focusable="true" />
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="URL (ex: http://192.168.1.10:8000/)"
-                        android:layout_marginBottom="12dp"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/etServerUrl"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textUri" />
-
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <!-- Salvar + Testar lado a lado -->
                     <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
+                        android:id="@+id/btnTestarConexao"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_weight="2"
+                        android:orientation="horizontal"
+                        android:gravity="center"
+                        android:background="@drawable/bg_glass_card"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:clipToOutline="true"
+                        android:clickable="true"
+                        android:focusable="true">
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnConfigurarServidor"
-                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="46dp"
-                            android:layout_weight="3"
-                            android:layout_marginEnd="8dp"
-                            android:text="Salvar"
-                            app:cornerRadius="10dp" />
+                        <ImageView
+                            android:layout_width="15dp"
+                            android:layout_height="15dp"
+                            android:src="@drawable/ic_sync"
+                            android:tint="@color/iceCreamBlueDark"
+                            android:contentDescription="" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnTestarConexao"
-                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="46dp"
-                            android:layout_weight="2"
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="5dp"
                             android:text="Testar"
-                            app:icon="@drawable/ic_sync"
-                            app:iconSize="16dp"
-                            app:cornerRadius="10dp" />
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/iceCreamBlueDark" />
 
                     </LinearLayout>
 
-                    <!-- Resultado do teste -->
-                    <TextView
-                        android:id="@+id/tvTesteResult"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:textSize="13sp"
-                        android:textStyle="bold"
-                        android:gravity="center"
-                        android:paddingVertical="8dp"
-                        android:paddingHorizontal="12dp"
-                        android:background="#F5F5F5"
-                        android:visibility="gone" />
-
                 </LinearLayout>
 
-            </com.google.android.material.card.MaterialCardView>
+                <TextView
+                    android:id="@+id/tvTesteResult"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:paddingVertical="8dp"
+                    android:paddingHorizontal="12dp"
+                    android:background="@color/glassCardBorder"
+                    android:visibility="gone" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
     </ScrollView>
 
-    <!-- Ícone modo escuro — fixo no canto superior direito, fora do ScrollView -->
-    <ImageButton
-        android:id="@+id/btnDarkMode"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
+    <!-- Dark mode toggle -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
         android:layout_gravity="top|end"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="4dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:padding="10dp"
-        android:tint="@color/colorPrimary"
-        android:contentDescription="Modo escuro" />
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:id="@+id/ivDarkModeIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_dark_mode"
+            android:tint="@color/atomicOrange"
+            android:contentDescription="Modo escuro" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/btnDarkMode"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:paddingStart="2dp"
+            app:thumbTint="@color/switch_thumb_color"
+            app:trackTint="@color/switch_track_color" />
+
+    </LinearLayout>
 
 </FrameLayout>

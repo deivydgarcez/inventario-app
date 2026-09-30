@@ -49,3 +49,6 @@
 
 # ── ViewBinding (gerado automaticamente) ──────────────────────────────────────
 -keep class br.com.inventario.databinding.** { *; }
+
+# ── Neumorphism ───────────────────────────────────────────────────────────────
+-keep class soup.neumorphism.** { *; }

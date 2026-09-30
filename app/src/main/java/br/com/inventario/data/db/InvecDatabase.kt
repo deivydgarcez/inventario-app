@@ -316,6 +316,22 @@ class ProdutoCacheDao(private val helper: InvecDatabase) {
             arrayOf(barcode, cddeposito.toString())
         ).useFirst { it.toCache() }
 
+    fun getByCdproduto(cdproduto: Int, cddeposito: Int): ProdutoCache? =
+        helper.readableDatabase.rawQuery(
+            "SELECT * FROM produtos_cache WHERE cdproduto=? AND cddeposito=? LIMIT 1",
+            arrayOf(cdproduto.toString(), cddeposito.toString())
+        ).useFirst { it.toCache() }
+
+    fun searchByNome(query: String, cddeposito: Int): List<ProdutoCache> =
+        helper.readableDatabase.rawQuery(
+            """SELECT codigobarra, cddeposito, cdproduto, produto, MAX(qtdeatual) AS qtdeatual, MAX(synced_at) AS synced_at
+               FROM produtos_cache
+               WHERE cddeposito=? AND UPPER(produto) LIKE UPPER('%'||?||'%')
+               GROUP BY cdproduto, produto, cddeposito, codigobarra
+               LIMIT 50""",
+            arrayOf(cddeposito.toString(), query)
+        ).useAll { it.toCache() }
+
     fun count(cddeposito: Int): Int =
         helper.readableDatabase.rawQuery(
             "SELECT COUNT(*) FROM produtos_cache WHERE cddeposito=?",

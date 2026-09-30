@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/screenBackground"
+    android:background="@drawable/bg_gradient"
     android:fitsSystemWindows="true">
 
     <androidx.appcompat.widget.Toolbar
@@ -12,8 +12,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:minHeight="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        android:background="@color/glassToolbarFill"
+        android:elevation="0dp"
+        android:theme="@style/Theme.Inventario.ToolbarOverlay"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
 
     <!-- Barra de resumo -->
@@ -21,11 +22,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="@color/cardBackground"
+        android:background="@color/glassToolbarFill"
         android:paddingHorizontal="16dp"
         android:paddingVertical="10dp"
-        android:gravity="center_vertical"
-        android:elevation="3dp">
+        android:gravity="center_vertical">
 
         <TextView
             android:id="@+id/tvOnlinePill"
@@ -33,7 +33,7 @@
             android:layout_height="wrap_content"
             android:text="● Online"
             android:textSize="11sp"
-            android:textColor="#FFFFFF"
+            android:textColor="@android:color/white"
             android:textStyle="bold"
             android:paddingHorizontal="10dp"
             android:paddingVertical="4dp"
@@ -69,7 +69,7 @@
         android:gravity="center"
         android:paddingVertical="5dp"
         android:paddingHorizontal="16dp"
-        android:background="@color/cardBackground"
+        android:background="@color/glassToolbarFill"
         android:visibility="gone" />
 
     <!-- Lista -->
@@ -78,7 +78,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:paddingTop="4dp"
+        android:paddingTop="8dp"
         android:paddingBottom="4dp"
         android:clipToPadding="false" />
 
@@ -89,59 +89,92 @@
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="12dp"
         android:layout_marginTop="8dp"
-        android:background="#FFB71C1C"
-        android:textColor="#FFFFFF"
+        android:background="#CCB71C1C"
+        android:textColor="@android:color/white"
         android:textStyle="bold"
         android:textSize="12sp"
         android:paddingHorizontal="12dp"
         android:paddingVertical="8dp"
         android:visibility="gone" />
 
-    <!-- Área de ações — fundo branco, elevação suave -->
+    <!-- Área de ações -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="@color/cardBackground"
-        android:elevation="6dp"
+        android:background="@color/glassToolbarFill"
         android:paddingHorizontal="12dp"
-        android:paddingTop="8dp"
+        android:paddingTop="10dp"
         android:paddingBottom="12dp">
 
-        <!-- Histórico + Auditoria -->
+        <!-- Histórico + Auditoria (glass card style) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingHorizontal="4dp">
+            android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
+            <LinearLayout
                 android:id="@+id/btnHistorico"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="46dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="4dp"
-                android:text="Histórico"
-                android:textSize="12sp"
-                app:icon="@drawable/ic_history"
-                app:iconSize="16dp"
-                app:strokeColor="@color/dividerColor"
-                app:cornerRadius="8dp" />
+                android:layout_marginEnd="6dp"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:background="@drawable/bg_glass_card"
+                android:foreground="?attr/selectableItemBackground"
+                android:clipToOutline="true"
+                android:clickable="true"
+                android:focusable="true">
 
-            <com.google.android.material.button.MaterialButton
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_history"
+                    android:tint="@color/iceCreamBlueDark"
+                    android:contentDescription="" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="Histórico"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/iceCreamBlueDark" />
+
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/btnAuditoria"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="46dp"
                 android:layout_weight="1"
-                android:layout_marginStart="4dp"
-                android:text="Auditoria"
-                android:textSize="12sp"
-                app:icon="@drawable/ic_report"
-                app:iconSize="16dp"
-                app:strokeColor="@color/dividerColor"
-                app:cornerRadius="8dp" />
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:background="@drawable/bg_glass_card"
+                android:foreground="?attr/selectableItemBackground"
+                android:clipToOutline="true"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_report"
+                    android:tint="@color/iceCreamBlueDark"
+                    android:contentDescription="" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="Auditoria"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/iceCreamBlueDark" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
@@ -150,35 +183,40 @@
             android:id="@+id/btnSincronizar"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:layout_marginTop="6dp"
+            android:layout_height="46dp"
+            android:layout_marginTop="8dp"
             android:text="↑ Sincronizar scans pendentes"
             android:textSize="13sp"
             android:visibility="gone"
+            android:elevation="0dp"
+            android:stateListAnimator="@null"
             app:strokeColor="@color/colorPrimary"
-            app:cornerRadius="8dp" />
+            app:backgroundTint="#26FFFFFF"
+            app:cornerRadius="16dp" />
 
         <!-- Recontagem -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnRecontagem"
             android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:layout_marginTop="6dp"
+            android:layout_height="50dp"
+            android:layout_marginTop="8dp"
             android:text="Fazer Recontagem"
             android:textSize="14sp"
             android:textStyle="bold"
             android:enabled="false"
-            app:cornerRadius="10dp"
+            android:elevation="0dp"
+            android:stateListAnimator="@null"
+            app:cornerRadius="16dp"
             app:backgroundTint="#FF388E3C" />
 
-        <!-- Aviso de bloqueio — logo acima do Consolidar -->
+        <!-- Aviso de bloqueio -->
         <TextView
             android:id="@+id/tvAvisoBloqueio"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:background="#FFFF8F00"
-            android:textColor="#FFFFFF"
+            android:background="#CCFF8F00"
+            android:textColor="@android:color/white"
             android:textStyle="bold"
             android:textSize="12sp"
             android:paddingHorizontal="12dp"
@@ -189,13 +227,15 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnConsolidar"
             android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginTop="6dp"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
             android:text="Consolidar Inventário"
             android:textSize="16sp"
             android:textStyle="bold"
             android:enabled="false"
-            app:cornerRadius="10dp"
+            android:elevation="0dp"
+            android:stateListAnimator="@null"
+            app:cornerRadius="16dp"
             app:backgroundTint="@color/colorPrimary" />
 
     </LinearLayout>

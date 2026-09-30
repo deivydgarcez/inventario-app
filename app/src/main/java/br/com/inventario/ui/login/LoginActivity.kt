@@ -1,9 +1,14 @@
 package br.com.inventario.ui.login
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.view.ViewAnimationUtils
+import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -33,15 +38,9 @@ class LoginActivity : AppCompatActivity() {
 
         session = SessionManager(this)
 
-        // Ícone modo escuro
         atualizarIconeDarkMode()
-        binding.btnDarkMode.setOnClickListener {
-            val novo = !session.isDarkMode()
-            session.saveDarkMode(novo)
-            AppCompatDelegate.setDefaultNightMode(
-                if (novo) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-            )
-            atualizarIconeDarkMode()
+        binding.btnDarkMode.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked != session.isDarkMode()) toggleDarkModeWithReveal(isChecked)
         }
 
         // Teclado: root com fitsSystemWindows já trata status/nav; aqui só o IME
@@ -63,6 +62,7 @@ class LoginActivity : AppCompatActivity() {
             return
         }
 
+        binding.btnEntrarNm.setOnClickListener { doLogin() }
         binding.btnEntrar.setOnClickListener { doLogin() }
 
         binding.btnConfigurarServidor.setOnClickListener {
@@ -142,14 +142,27 @@ class LoginActivity : AppCompatActivity() {
         }
 
         setLoading(true)
+        val deviceId = getOrCreateDeviceId()
+        val deviceName = android.os.Build.MODEL
         lifecycleScope.launch {
             try {
                 val api = RetrofitClient.build(session)
-                val response = api.login(LoginRequest(login, senha))
+                val response = api.login(LoginRequest(login, senha, deviceId, deviceName))
                 if (response.isSuccessful) {
                     val body = response.body()!!
                     session.saveLogin(body.accessToken, body.usuario, body.nome, body.role, body.mobileAdmin)
                     goToMain()
+                } else if (response.code() == 403) {
+                    val detail = try {
+                        org.json.JSONObject(response.errorBody()?.string() ?: "").getString("detail")
+                    } catch (_: Exception) {
+                        "Acesso negado. Contate o administrador."
+                    }
+                    androidx.appcompat.app.AlertDialog.Builder(this@LoginActivity)
+                        .setTitle("Limite de Dispositivos")
+                        .setMessage(detail)
+                        .setPositiveButton("OK", null)
+                        .show()
                 } else {
                     val msg = if (response.code() == 401) {
                         "Login ou senha inválidos"
@@ -174,14 +187,60 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
+    private fun getOrCreateDeviceId(): String {
+        val prefs = getSharedPreferences("invec_device", android.content.Context.MODE_PRIVATE)
+        var id = prefs.getString("device_uuid", null)
+        if (id == null) {
+            id = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("device_uuid", id).apply()
+        }
+        return id
+    }
+
     private fun setLoading(loading: Boolean) {
+        binding.btnEntrarNm.isEnabled = !loading
         binding.btnEntrar.isEnabled = !loading
         binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
     }
 
+    private fun toggleDarkModeWithReveal(novo: Boolean) {
+        val newBgColor = if (novo) Color.parseColor("#1C2128") else Color.parseColor("#E8ECEF")
+
+        val rootView = binding.root
+        val overlayView = android.view.View(this).apply { setBackgroundColor(newBgColor) }
+        (rootView as ViewGroup).overlay.add(overlayView)
+        overlayView.layout(0, 0, rootView.width, rootView.height)
+
+        val loc = IntArray(2)
+        binding.btnDarkMode.getLocationInWindow(loc)
+        val cx = loc[0] + binding.btnDarkMode.width / 2
+        val cy = loc[1] + binding.btnDarkMode.height / 2
+        val maxRadius = Math.hypot(rootView.width.toDouble(), rootView.height.toDouble()).toFloat()
+
+        val reveal = ViewAnimationUtils.createCircularReveal(overlayView, cx, cy, 0f, maxRadius)
+        reveal.duration = 420
+        reveal.interpolator = AccelerateDecelerateInterpolator()
+        reveal.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                session.saveDarkMode(novo)
+                binding.ivDarkModeIcon.setImageResource(
+                    if (novo) R.drawable.ic_light_mode else R.drawable.ic_dark_mode
+                )
+                AppCompatDelegate.setDefaultNightMode(
+                    if (novo) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+                )
+                (rootView as ViewGroup).overlay.remove(overlayView)
+            }
+        })
+        reveal.start()
+    }
+
     private fun atualizarIconeDarkMode() {
-        val icon = if (session.isDarkMode()) R.drawable.ic_light_mode else R.drawable.ic_dark_mode
-        binding.btnDarkMode.setImageResource(icon)
+        val isDark = session.isDarkMode()
+        binding.btnDarkMode.isChecked = isDark
+        binding.ivDarkModeIcon.setImageResource(
+            if (isDark) R.drawable.ic_light_mode else R.drawable.ic_dark_mode
+        )
     }
 
     private fun goToMain() {

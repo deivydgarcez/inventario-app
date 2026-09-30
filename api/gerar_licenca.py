@@ -26,7 +26,8 @@ def main():
     cliente    = input("Nome do cliente      : ").strip()
     cnpj       = input("CNPJ                 : ").strip()
     meses_str  = input("Validade (meses, Enter = sem validade): ").strip()
-    machine_id = input("ID da maquina (Enter = sem vinculo)   : ").strip().upper()
+    machine_id   = input("ID da maquina (Enter = sem vinculo)   : ").strip().upper()
+    max_disp_str = input("Max dispositivos moveis (Enter = ilimitado): ").strip()
 
     hoje = date.today()
     expiracao = (hoje + timedelta(days=30 * int(meses_str))).isoformat() if meses_str else ""
@@ -40,6 +41,8 @@ def main():
     }
     if machine_id:
         payload["machine_id"] = machine_id
+    if max_disp_str and max_disp_str.isdigit() and int(max_disp_str) > 0:
+        payload["max_dispositivos"] = int(max_disp_str)
 
     token = jwt.encode(payload, chave_privada, algorithm="RS256")
 
@@ -50,6 +53,7 @@ def main():
     print(f"  Emitida    : {hoje.isoformat()}")
     print(f"  Expira     : {expiracao if expiracao else 'Sem validade'}")
     print(f"  Maquina    : {machine_id if machine_id else 'Sem vinculo (reutilizavel)'}")
+    print(f"  Max. disp. : {payload.get('max_dispositivos', 'Ilimitado')}")
     print("=" * 55)
     print()
     print("Adicione a linha abaixo no arquivo .env do cliente:")

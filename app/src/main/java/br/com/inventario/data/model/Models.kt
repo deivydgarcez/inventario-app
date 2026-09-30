@@ -2,7 +2,12 @@ package br.com.inventario.data.model
 
 import com.google.gson.annotations.SerializedName
 
-data class LoginRequest(val login: String, val senha: String)
+data class LoginRequest(
+    val login: String,
+    val senha: String,
+    @SerializedName("device_id") val deviceId: String? = null,
+    @SerializedName("device_name") val deviceName: String? = null,
+)
 
 data class TokenResponse(
     @SerializedName("access_token") val accessToken: String,
@@ -81,6 +86,14 @@ data class ConsolidarRequest(
     @SerializedName("session_id") val sessionId: String? = null,
     @SerializedName("justificativa_sem_recontagem") val justificativaSemRecontagem: String? = null,
     @SerializedName("considerar_entrega") val considerarEntrega: Boolean = false,
+    @SerializedName("dt_referencia") val dtReferencia: String? = null,
+)
+
+data class ZerarContagemRequest(
+    val cddeposito: Int,
+    @SerializedName("session_id") val sessionId: String,
+    val justificativa: String,
+    @SerializedName("device_id") val deviceId: String? = null,
 )
 
 data class SupervisorPreAuthRequest(val login: String, val senha: String)
@@ -185,4 +198,12 @@ data class LogAuditoria(
     val motivo: String?,
     @SerializedName("device_id") val deviceId: String?,
     @SerializedName("data_hora") val dataHora: String?,
+)
+
+data class DispositivoInfo(
+    val id: Int,
+    @SerializedName("device_id") val deviceId: String,
+    @SerializedName("nome_dispositivo") val nomeDispositivo: String?,
+    @SerializedName("primeiro_acesso") val primeiroAcesso: String?,
+    @SerializedName("ultimo_acesso") val ultimoAcesso: String?,
 )

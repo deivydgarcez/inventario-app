@@ -22,4 +22,10 @@
         android:icon="@drawable/ic_sync"
         app:showAsAction="ifRoom" />
 
+    <item
+        android:id="@+id/action_zerar_contagem"
+        android:title="Recomeçar contagem"
+        app:showAsAction="never"
+        android:visible="false" />
+
 </menu>

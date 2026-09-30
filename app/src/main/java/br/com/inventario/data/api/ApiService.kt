@@ -27,6 +27,12 @@ interface ApiService {
         @Query("cddeposito") cddeposito: Int,
     ): Response<List<Produto>>
 
+    @GET("produtos/cdproduto/{cdproduto}")
+    suspend fun buscarPorCdproduto(
+        @Path("cdproduto") cdproduto: Int,
+        @Query("cddeposito") cddeposito: Int,
+    ): Response<Produto>
+
     @POST("inventario/bipagem")
     suspend fun registrarBipagem(@Body body: BipagemRequest): Response<BipagemResponse>
 
@@ -109,4 +115,13 @@ interface ApiService {
 
     @PUT("auth/usuarios/{id}/toggle-admin")
     suspend fun toggleAdminMobile(@Path("id") id: Int): Response<Map<String, Any>>
+
+    @POST("inventario/zerar-contagem")
+    suspend fun zerarContagem(@Body body: br.com.inventario.data.model.ZerarContagemRequest): Response<Map<String, Any>>
+
+    @GET("admin/dispositivos")
+    suspend fun listarDispositivos(): Response<List<DispositivoInfo>>
+
+    @DELETE("admin/dispositivos/{id}")
+    suspend fun removerDispositivo(@Path("id") id: Int): Response<Map<String, String>>
 }

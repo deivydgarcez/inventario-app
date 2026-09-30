@@ -2,7 +2,7 @@ import time
 import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.database import get_connection, fetchall_as_dict, fetchone_as_dict
-from app.security import create_token, get_current_user
+from app.security import create_token, get_current_user, hash_senha, verificar_senhamobile
 from app.models.schemas import LoginRequest, TokenResponse, UsuarioMobile, SenhaMobileRequest
 
 router = APIRouter(prefix="/auth", tags=["Autenticação"])
@@ -87,6 +87,39 @@ def _pode_gerir(user: dict) -> bool:
     return _is_mi(user) or user.get("mobile_admin") == 1
 
 
+def _verificar_dispositivo(device_id: str, device_name: str | None = None):
+    from app.licenca import get_max_dispositivos
+    max_disp = get_max_dispositivos()
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute(
+            "SELECT ID FROM DISPOSITIVOS_AUTORIZADOS WHERE DEVICE_ID = ?",
+            (device_id,)
+        )
+        if cur.fetchone():
+            cur.execute(
+                "UPDATE DISPOSITIVOS_AUTORIZADOS SET ULTIMO_ACESSO = CURRENT_TIMESTAMP "
+                "WHERE DEVICE_ID = ?",
+                (device_id,)
+            )
+            return
+        if max_disp is not None:
+            cur.execute("SELECT COUNT(*) FROM DISPOSITIVOS_AUTORIZADOS")
+            count = cur.fetchone()[0]
+            if count >= max_disp:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"Limite de licença atingido ({max_disp} dispositivo(s) autorizado(s)). "
+                        "Contate o administrador para liberar um slot."
+                    ),
+                )
+        cur.execute(
+            "INSERT INTO DISPOSITIVOS_AUTORIZADOS (DEVICE_ID, NOME_DISPOSITIVO) VALUES (?, ?)",
+            (device_id, device_name or "Dispositivo desconhecido"),
+        )
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, request: Request):
     ip = request.client.host if request.client else "unknown"
@@ -145,14 +178,36 @@ def login(body: LoginRequest, request: Request):
         cur = con.cursor()
         cur.execute(
             "SELECT IDUSUARIO, LOGIN, NOMECOMPLETO, IDGRUPO, "
-            "COALESCE(MOBILE_ADMIN, 0) AS MOBILE_ADMIN "
+            "COALESCE(MOBILE_ADMIN, 0) AS MOBILE_ADMIN, SENHAMOBILE, SENHA "
             "FROM USUARIOS "
             "WHERE LOWER(LOGIN) = LOWER(?) "
-            "AND (SENHAMOBILE = ? OR SENHA = ?) "
             "AND (INATIVO IS NULL OR INATIVO = 0)",
-            (body.login, body.senha, _automec_code(body.senha)),
+            (body.login,),
         )
-        user = fetchone_as_dict(cur)
+        row = fetchone_as_dict(cur)
+
+    user = None
+    precisa_migrar_hash = False
+    if row:
+        senhamobile_ok = verificar_senhamobile(body.senha, row.get("senhamobile"))
+        automec_ok = bool(row.get("senha")) and row["senha"] == _automec_code(body.senha)
+        if senhamobile_ok or automec_ok:
+            user = {k: v for k, v in row.items() if k not in ("senhamobile", "senha")}
+            # migra texto puro para hash na primeira autenticação bem-sucedida
+            if senhamobile_ok and row.get("senhamobile") and not (
+                row["senhamobile"].startswith("$2b$") or row["senhamobile"].startswith("$2a$")
+            ):
+                precisa_migrar_hash = True
+
+    if precisa_migrar_hash:
+        try:
+            with get_connection() as con:
+                con.cursor().execute(
+                    "UPDATE USUARIOS SET SENHAMOBILE = ? WHERE LOWER(LOGIN) = LOWER(?)",
+                    (hash_senha(body.senha), body.login),
+                )
+        except Exception:
+            pass
 
     if not user:
         for chave in (ip, user_key):
@@ -187,6 +242,9 @@ def login(body: LoginRequest, request: Request):
             )
     except Exception:
         pass
+
+    if body.device_id:
+        _verificar_dispositivo(body.device_id, body.device_name)
 
     is_mi = user["login"].upper() == MI_LOGIN
     mobile_admin = 1 if is_mi else (user.get("mobile_admin") or 0)
@@ -241,9 +299,10 @@ def definir_senha_mobile(
             raise HTTPException(status_code=404, detail="Usuário não encontrado")
         if row[0].upper() == MI_LOGIN and not _is_mi(current_user):
             raise HTTPException(status_code=403, detail="Usuário MI não pode ser alterado")
+        novo_hash = hash_senha(body.senha) if body.senha else None
         cur.execute(
             "UPDATE USUARIOS SET SENHAMOBILE = ? WHERE IDUSUARIO = ?",
-            (body.senha or None, idusuario),
+            (novo_hash, idusuario),
         )
     return {"mensagem": "Senha mobile atualizada"}
 

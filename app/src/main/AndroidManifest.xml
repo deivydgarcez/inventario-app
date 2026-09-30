@@ -18,14 +18,19 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".ui.login.LoginActivity"
+            android:name=".ui.splash.SplashActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:theme="@style/Theme.Inventario.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.login.LoginActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity android:name=".ui.main.MainActivity" />
         <activity android:name=".ui.scanner.ScannerActivity" />
@@ -35,6 +40,7 @@
         <activity android:name=".ui.operadores.OperadoresActivity" />
         <activity android:name=".ui.auditoria.AuditoriaActivity" />
         <activity android:name=".ui.usuarios.UsuariosActivity" />
+        <activity android:name=".ui.usuarios.DevicesActivity" />
 
     </application>
 </manifest>

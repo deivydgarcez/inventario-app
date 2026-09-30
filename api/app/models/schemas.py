@@ -6,6 +6,8 @@ from datetime import datetime
 class LoginRequest(BaseModel):
     login: str
     senha: str
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
@@ -91,6 +93,14 @@ class ConsolidarRequest(BaseModel):
     session_id: Optional[str] = None
     justificativa_sem_recontagem: Optional[str] = None
     considerar_entrega: bool = False
+    dt_referencia: Optional[str] = None  # "YYYY-MM-DD" — data retroativa para DTMOVIMENTO
+
+
+class ZerarContagemRequest(BaseModel):
+    cddeposito: int
+    session_id: str
+    justificativa: str
+    device_id: Optional[str] = None
 
 
 class ItemHistorico(BaseModel):
@@ -199,3 +209,11 @@ class CatalogoResponse(BaseModel):
     total: int
     pagina: int
     paginas: int
+
+
+class DispositivoResponse(BaseModel):
+    id: int
+    device_id: str
+    nome_dispositivo: Optional[str] = None
+    primeiro_acesso: Optional[datetime] = None
+    ultimo_acesso: Optional[datetime] = None

@@ -210,15 +210,36 @@ A licença usa criptografia assimétrica **RSA 2048-bit / JWT RS256**.
 **Payload da licença:**
 ```json
 {
-  "produto":    "Invec",
-  "cliente":    "Nome da Empresa Ltda",
-  "cnpj":       "00.000.000/0001-00",
-  "emitida_em": "2026-06-19",
-  "expira_em":  ""
+  "produto":          "Invec",
+  "cliente":          "Nome da Empresa Ltda",
+  "cnpj":             "00.000.000/0001-00",
+  "emitida_em":       "2026-06-19",
+  "expira_em":        "",
+  "max_dispositivos": 3
 }
 ```
 
-> `expira_em` vazio = licença permanente.
+> `expira_em` vazio = licença permanente. `max_dispositivos` ausente = dispositivos ilimitados.
+
+### Licenciamento por Dispositivo
+
+Desde v1.8.0, o campo `max_dispositivos` na licença controla quantos aparelhos podem usar o app simultaneamente.
+
+**Fluxo no login:**
+1. App envia `device_id` (UUID gerado na primeira instalação, salvo em SharedPreferences) e `device_name` (modelo do aparelho)
+2. Servidor verifica tabela `DISPOSITIVOS_AUTORIZADOS`:
+   - Aparelho já registrado → atualiza `ULTIMO_ACESSO`, prossegue
+   - Aparelho novo + conta < `max_dispositivos` → registra + prossegue
+   - Aparelho novo + limite atingido → HTTP 403 com mensagem de erro
+3. Administrador pode listar e remover aparelhos via `/admin/dispositivos`
+
+**Endpoints admin:**
+```
+GET    /admin/dispositivos        — lista todos os dispositivos registrados
+DELETE /admin/dispositivos/{id}   — remove dispositivo (libera slot)
+```
+
+Ambos requerem token Bearer de usuário MI ou `mobile_admin=1`.
 
 Validação no startup: `main.py` chama `validar_licenca()` no `lifespan` antes de aceitar qualquer requisição. Se inválida ou expirada, `sys.exit(1)` encerra o processo.
 
@@ -262,6 +283,7 @@ python gerar_licenca.py
 | `USUARIO_DEPOSITO` | Restrição de acesso por depósito. Colunas: `IDUSUARIO`, `CDDEPOSITO` (PK composta). |
 | `USUARIOS.SENHAMOBILE` | Hash bcrypt da senha mobile. `NULL` = usuário sem acesso ao app. |
 | `USUARIOS.MOBILE_ADMIN` | `SMALLINT` — flag de administração mobile (`1`=ativo). |
+| `DISPOSITIVOS_AUTORIZADOS` | Controle de licenciamento por aparelho. Colunas: `ID` (PK autoincrement), `DEVICE_ID VARCHAR(128) UNIQUE` (UUID gerado no celular), `NOME_DISPOSITIVO VARCHAR(200)` (modelo do aparelho), `PRIMEIRO_ACESSO TIMESTAMP`, `ULTIMO_ACESSO TIMESTAMP`. Criada automaticamente na migração. |
 
 ---
 
@@ -583,7 +605,8 @@ pyinstaller instalador.spec --clean --noconfirm
 ```powershell
 cd C:\Administracao\inventario-app\api
 python gerar_licenca.py
-# Preenche: nome, CNPJ, validade em meses (Enter = permanente), machine_id (Enter = sem vínculo)
+# Campos: nome, CNPJ, validade (meses), machine_id, max_dispositivos
+# max_dispositivos: número máximo de celulares (Enter = ilimitado)
 # Saída: LICENSE_KEY=eyJhbGciOiJSUzI1NiJ9...
 # Enviar esta string ao cliente para colar no campo do instalador
 ```

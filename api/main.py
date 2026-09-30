@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, depositos, produtos, inventario, operadores, sessao
+from app.routers import auth, depositos, produtos, inventario, operadores, sessao, dispositivos
 from app.migrations import run_migrations
 from app.licenca import validar_licenca
 
@@ -18,6 +18,9 @@ app = FastAPI(
     description="API para contagem de inventário integrada ao Firebird (miautomec)",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 app.add_middleware(
@@ -34,6 +37,7 @@ app.include_router(produtos.router)
 app.include_router(inventario.router)
 app.include_router(operadores.router)
 app.include_router(sessao.router)
+app.include_router(dispositivos.router)
 
 
 @app.get("/", tags=["Health"])
@@ -44,3 +48,16 @@ def health():
 @app.get("/ping", tags=["Health"])
 def ping():
     return {"status": "ok"}
+
+
+@app.get("/db-ping", tags=["Health"])
+def db_ping():
+    from app.database import get_connection
+    try:
+        with get_connection() as con:
+            cur = con.cursor()
+            cur.execute("SELECT 1 FROM RDB$DATABASE")
+            cur.fetchone()
+        return {"status": "ok"}
+    except Exception:
+        return {"status": "error"}

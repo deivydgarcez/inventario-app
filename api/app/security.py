@@ -3,8 +3,21 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from passlib.hash import bcrypt as _bcrypt
 from dotenv import load_dotenv
 import os
+
+
+def hash_senha(senha: str) -> str:
+    return _bcrypt.hash(senha)
+
+
+def verificar_senhamobile(senha_digitada: str, valor_banco: str | None) -> bool:
+    if not valor_banco:
+        return False
+    if valor_banco.startswith("$2b$") or valor_banco.startswith("$2a$"):
+        return _bcrypt.verify(senha_digitada, valor_banco)
+    return valor_banco == senha_digitada
 
 load_dotenv()
 

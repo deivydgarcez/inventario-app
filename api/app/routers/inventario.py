@@ -6,11 +6,11 @@ from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from app.database import get_connection, fetchall_as_dict, fetchone_as_dict
-from app.security import get_current_user
+from app.security import get_current_user, verificar_senhamobile
 from app.models.schemas import (
     BipagemRequest, BipagemResponse, EditarBipagemRequest,
     ItemRelatorio, ConsolidarRequest, ItemHistorico, LogItem, ResumoContagem,
-    LoteBipagemRequest, LoteSyncResponse, SupervisorPreAuthRequest,
+    LoteBipagemRequest, LoteSyncResponse, SupervisorPreAuthRequest, ZerarContagemRequest,
 )
 from app.calc import calcular_delta_estoque
 
@@ -300,8 +300,7 @@ def supervisor_pre_auth(
         )
         sup = fetchone_as_dict(cur)
 
-    senha_mobile = (sup.get("senhamobile") or "") if sup else ""
-    credenciais_ok = sup and senha_mobile and senha_mobile == body.senha
+    credenciais_ok = sup and verificar_senhamobile(body.senha, sup.get("senhamobile"))
 
     if not credenciais_ok:
         _sup_tentativas.setdefault(chave, []).append(agora)
@@ -333,6 +332,77 @@ def supervisor_pre_auth(
         }
 
     return {"supervisor_token": token, "expira_em_segundos": _SUPERVISOR_TOKEN_TTL}
+
+
+@router.post("/zerar-contagem")
+def zerar_contagem(
+    body: ZerarContagemRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Feature A: apaga toda a contagem da sessão com justificativa obrigatória.
+    Apenas supervisores (MI, admin, gerente) podem executar."""
+    is_supervisor = (
+        current_user.get("login", "").upper() == "MI"
+        or (current_user.get("idgrupo") or 3) in (1, 2)
+    )
+    if not is_supervisor:
+        raise HTTPException(status_code=403, detail="Apenas supervisores podem recomeçar a contagem")
+
+    if not body.justificativa or len(body.justificativa.strip()) < 10:
+        raise HTTPException(status_code=400, detail="Justificativa obrigatória (mínimo 10 caracteres)")
+
+    _verificar_acesso_deposito(current_user, body.cddeposito)
+
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute(
+            "SELECT STATUS FROM INVENTARIO_SESSAO WHERE SESSION_ID = ?",
+            (body.session_id,),
+        )
+        row_sessao = cur.fetchone()
+        if row_sessao and row_sessao[0] in ("CONSOLIDADA", "CONSOLIDANDO"):
+            raise HTTPException(
+                status_code=409,
+                detail="Sessão já consolidada não pode ser reaberta.",
+            )
+
+        cur.execute(
+            "SELECT COUNT(*) FROM INVENTARIO_TEMP "
+            "WHERE CDDEPOSITO = ? AND SESSION_ID = ? AND (ORIGEM = 'INVEC' OR ORIGEM IS NULL)",
+            (body.cddeposito, body.session_id),
+        )
+        total_removidos = cur.fetchone()[0] or 0
+
+        cur.execute(
+            "DELETE FROM INVENTARIO_TEMP "
+            "WHERE CDDEPOSITO = ? AND SESSION_ID = ? AND (ORIGEM = 'INVEC' OR ORIGEM IS NULL)",
+            (body.cddeposito, body.session_id),
+        )
+        cur.execute(
+            "DELETE FROM SCANS_PROCESSADOS WHERE SESSION_ID = ?",
+            (body.session_id,),
+        )
+        cur.execute(
+            "DELETE FROM LOTES_SYNC_PROCESSADOS WHERE SESSION_ID = ?",
+            (body.session_id,),
+        )
+        cur.execute(
+            "UPDATE INVENTARIO_SESSAO SET STATUS = 'ABERTA' WHERE SESSION_ID = ?",
+            (body.session_id,),
+        )
+
+    _registrar_log(
+        "RECONTAGEM_ZERADA",
+        login_usuario=current_user.get("login", ""),
+        cddeposito=body.cddeposito,
+        qtde_antes=float(total_removidos),
+        qtde_depois=0.0,
+        motivo=f"{body.justificativa.strip()} · {total_removidos} item(ns) removido(s) · session={body.session_id}",
+        device_id=body.device_id,
+        session_id=body.session_id,
+    )
+
+    return {"mensagem": f"{total_removidos} item(ns) removido(s). Contagem reiniciada.", "total_removidos": total_removidos}
 
 
 @router.post("/bipagem", response_model=BipagemResponse)
@@ -433,7 +503,8 @@ def registrar_bipagem(
                 cur.execute(
                     "UPDATE INVENTARIO_TEMP "
                     "SET QTDE = ?, SESSION_ID = ?, OPERADOR = ?, "
-                    "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
+                    "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC', "
+                    "DATA_HORA_SCAN = CURRENT_TIMESTAMP "
                     "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
                     (body.qtde, body.session_id, body.operador, qtde_sistema,
                      body.cdproduto, body.cddeposito),
@@ -442,7 +513,8 @@ def registrar_bipagem(
         else:
             cur.execute(
                 "UPDATE INVENTARIO_TEMP SET QTDE = QTDE + ?, OPERADOR = ?, "
-                "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
+                "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC', "
+                "DATA_HORA_SCAN = COALESCE(DATA_HORA_SCAN, CURRENT_TIMESTAMP) "
                 "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
                 (body.qtde, body.operador, qtde_sistema, body.cdproduto, body.cddeposito),
             )
@@ -459,15 +531,15 @@ def registrar_bipagem(
             if body.session_id:
                 cur.execute(
                     "INSERT INTO INVENTARIO_TEMP "
-                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, SESSION_ID, ORIGEM) "
-                    "VALUES (?, ?, ?, ?, ?, ?, 'INVEC')",
+                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, SESSION_ID, ORIGEM, DATA_HORA_SCAN) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'INVEC', CURRENT_TIMESTAMP)",
                     (body.cdproduto, body.cddeposito, body.qtde, body.operador, qtde_sistema, body.session_id),
                 )
             else:
                 cur.execute(
                     "INSERT INTO INVENTARIO_TEMP "
-                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, ORIGEM) "
-                    "VALUES (?, ?, ?, ?, ?, 'INVEC')",
+                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, ORIGEM, DATA_HORA_SCAN) "
+                    "VALUES (?, ?, ?, ?, ?, 'INVEC', CURRENT_TIMESTAMP)",
                     (body.cdproduto, body.cddeposito, body.qtde, body.operador, qtde_sistema),
                 )
             mensagem = "Bipagem registrada"
@@ -628,7 +700,8 @@ def sincronizar_lote(
                 cur.execute(
                     "UPDATE INVENTARIO_TEMP "
                     "SET QTDE = ?, SESSION_ID = ?, OPERADOR = ?, "
-                    "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC' "
+                    "QTDEATUAL_SNAP = COALESCE(QTDEATUAL_SNAP, ?), ORIGEM = 'INVEC', "
+                    "DATA_HORA_SCAN = CURRENT_TIMESTAMP "
                     "WHERE CDPRODUTO = ? AND CDDEPOSITO = ? RETURNING QTDE",
                     (net_qtde, body.session_id, item.operador, item.qtde_sistema,
                      item.cdproduto, body.cddeposito),
@@ -640,8 +713,8 @@ def sincronizar_lote(
                 nova_qtde = net_qtde
                 cur.execute(
                     "INSERT INTO INVENTARIO_TEMP "
-                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, SESSION_ID, ORIGEM) "
-                    "VALUES (?, ?, ?, ?, ?, ?, 'INVEC')",
+                    "(CDPRODUTO, CDDEPOSITO, QTDE, OPERADOR, QTDEATUAL_SNAP, SESSION_ID, ORIGEM, DATA_HORA_SCAN) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'INVEC', CURRENT_TIMESTAMP)",
                     (item.cdproduto, body.cddeposito, net_qtde, item.operador,
                      item.qtde_sistema, body.session_id),
                 )
@@ -1026,7 +1099,8 @@ def consolidar_inventario(
                          WHERE PP3.CDPRODUTO = CAST(IT.CDPRODUTO AS VARCHAR(10))
                            AND PP3.CDUNIDADE = P.CDUNIDADE
                            AND PP3.IDPRECO   = P.IDPRECO),
-                        0)                                       AS VLCUSTO
+                        0)                                       AS VLCUSTO,
+                    IT.DATA_HORA_SCAN
                 FROM INVENTARIO_TEMP IT
                 JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO
                 WHERE IT.CDDEPOSITO = ? {session_where}
@@ -1133,13 +1207,12 @@ def consolidar_inventario(
                     supervisor = fetchone_as_dict(cur)
                     if not supervisor:
                         raise HTTPException(status_code=401, detail="Credenciais do supervisor inválidas")
-                    senha_mobile = supervisor.get("senhamobile") or ""
-                    if not senha_mobile:
+                    if not supervisor.get("senhamobile"):
                         raise HTTPException(
                             status_code=403,
                             detail="Supervisor não possui senha mobile configurada.",
                         )
-                    if senha_mobile != body.supervisor_senha:
+                    if not verificar_senhamobile(body.supervisor_senha, supervisor.get("senhamobile")):
                         raise HTTPException(status_code=401, detail="Credenciais do supervisor inválidas")
                     is_mi_sup = supervisor.get("login", "").upper() == "MI"
                     if not is_mi_sup and (supervisor.get("idgrupo") or 3) not in (1, 2):
@@ -1164,6 +1237,19 @@ def consolidar_inventario(
             cur.execute("SELECT GEN_ID(GEN_MOV_PRODUTO, 1) FROM RDB$DATABASE")
             idinventario = cur.fetchone()[0]
 
+            from datetime import date as _date
+            # dt_referencia manual sobrepõe tudo; senão cada produto usa a data do seu primeiro scan
+            _dt_referencia_override: _date | None = None
+            if body.dt_referencia:
+                if not is_supervisor:
+                    raise HTTPException(status_code=403, detail="Apenas supervisores podem definir data retroativa")
+                try:
+                    _dt_referencia_override = _date.fromisoformat(body.dt_referencia)
+                    if _dt_referencia_override > _date.today():
+                        raise HTTPException(status_code=400, detail="A data retroativa não pode ser futura")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Formato de data inválido. Use AAAA-MM-DD")
+
             cur2 = con.cursor()
             itens_divergentes = []
 
@@ -1180,6 +1266,14 @@ def consolidar_inventario(
                 operador_item = item.get("operador") or body.operador or ""
                 nome_produto  = item["produto"] or f"#{cdproduto}"
                 qtdeentrega   = qtde_entrega_map.get(cdproduto, 0.0)
+
+                # dtmovimento: data manual > data do scan > hoje
+                if _dt_referencia_override:
+                    dtmovimento = _dt_referencia_override
+                elif item.get("data_hora_scan"):
+                    dtmovimento = item["data_hora_scan"].date() if hasattr(item["data_hora_scan"], "date") else _date.fromisoformat(str(item["data_hora_scan"])[:10])
+                else:
+                    dtmovimento = _date.today()
                 if qtdeentrega > 0:
                     print(f"[entrega] produto={cdproduto} qtde_contada={qtde_contada} qtde_atual={qtde_atual} qtdeentrega={qtdeentrega} effective={qtde_contada - qtdeentrega:.2f}")
 
@@ -1200,9 +1294,9 @@ def consolidar_inventario(
                         "(IDEMPRESA, CDPRODUTO, CDDEPOSITO, TIPOMOVIMENTO, CDNATOP, DTMOVIMENTO, HISTORICO, "
                         "FATORCONV, QTENTRADA, QTSAIDA, IDUSUARIO, CDUNIDADE, IDINVENTARIO, "
                         "QTDINVENTARIO, QTDANTERIOR, VL_PERDA_GANHO, SIST_ALT) "
-                        "VALUES (?, ?, ?, 5, '0000', CURRENT_DATE, 'Ajuste na Tela de Inventário', "
+                        "VALUES (?, ?, ?, 5, '0000', ?, 'Ajuste na Tela de Inventário', "
                         "?, ?, ?, ?, ?, ?, ?, ?, ?, 'INV_APP')",
-                        (idempresa, cdproduto_str, body.cddeposito, fatorconv,
+                        (idempresa, cdproduto_str, body.cddeposito, dtmovimento, fatorconv,
                          qtentrada, qtsaida, idusuario, cdunidade, idinventario,
                          qtde_contada, qtdanterior, vl_perda_ganho),
                     )
@@ -1212,9 +1306,9 @@ def consolidar_inventario(
                         "(IDEMPRESA, CDPRODUTO, CDDEPOSITO, TIPOMOVIMENTO, CDNATOP, DTMOVIMENTO, HISTORICO, "
                         "FATORCONV, QTENTRADA, QTSAIDA, IDUSUARIO, CDUNIDADE, IDINVENTARIO, "
                         "QTDINVENTARIO, QTDANTERIOR, SIST_ALT) "
-                        "VALUES (?, ?, ?, 5, '0000', CURRENT_DATE, 'Ajuste na Tela de Inventário', "
+                        "VALUES (?, ?, ?, 5, '0000', ?, 'Ajuste na Tela de Inventário', "
                         "?, ?, ?, ?, ?, ?, ?, ?, 'INV_APP')",
-                        (idempresa, cdproduto_str, body.cddeposito, fatorconv,
+                        (idempresa, cdproduto_str, body.cddeposito, dtmovimento, fatorconv,
                          qtentrada, qtsaida, idusuario, cdunidade, idinventario,
                          qtde_contada, qtdanterior),
                     )
@@ -1252,7 +1346,8 @@ def consolidar_inventario(
                 (body.cddeposito, body.operador, current_user.get("login", ""),
                  float(total),
                  f"{total} itens · {divergencias} divergências{supervisor_label} · inv#{idinventario}"
-                 + (f" · session={body.session_id}" if body.session_id else ""),
+                 + (f" · session={body.session_id}" if body.session_id else "")
+                 + (f" · dt_ref={body.dt_referencia}" if body.dt_referencia else ""),
                  body.session_id),
             )
 
@@ -1337,7 +1432,7 @@ def historico_inventario(
             WHERE MP.CDDEPOSITO = ?
               AND MP.SIST_ALT = 'INV_APP'
               AND MP.TIPOMOVIMENTO = 5
-            ORDER BY MP.DTMOVIMENTO DESC, MP.IDMOVIMENTO DESC
+            ORDER BY MP.IDMOVIMENTO DESC
             """,
             (cddeposito,),
         )

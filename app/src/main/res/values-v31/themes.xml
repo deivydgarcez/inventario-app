@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 31+: system splash vira tela laranja pura (ícone transparente = invisível) -->
+    <style name="Theme.Inventario.Splash" parent="Theme.Inventario.NoBar">
+        <item name="android:windowBackground">@color/atomicOrange</item>
+        <item name="android:statusBarColor">@color/atomicOrange</item>
+        <item name="android:navigationBarColor">@color/atomicOrange</item>
+        <item name="android:windowSplashScreenBackground">@color/atomicOrange</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon_transparent</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/atomicOrange</item>
+    </style>
+</resources>

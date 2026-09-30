@@ -4,17 +4,37 @@
     <color name="colorPrimary">#CC5B2A</color>
     <color name="colorPrimaryDark">#A04520</color>
     <color name="colorPrimaryLight">#FDEEE8</color>
-    <color name="colorAccent">#E07040</color>
-    <color name="colorPrimaryText">#3D3D3D</color>
+    <color name="colorAccent">#FF5C23</color>
+    <color name="colorPrimaryText">#2C3E50</color>
+
+    <!-- Neumorphism light -->
+    <color name="nmBackground">#E8ECEF</color>
+    <color name="nmShadowLight">#FFFFFF</color>
+    <color name="nmShadowDark">#C8CDD4</color>
+    <color name="screenBackground">#E8ECEF</color>
+    <color name="cardBackground">#E8ECEF</color>
 
     <!-- Layout -->
-    <color name="screenBackground">#F5F5F5</color>
-    <color name="cardBackground">#FFFFFF</color>
-    <color name="dividerColor">#E0E0E0</color>
-    <color name="textSecondary">#757575</color>
+    <color name="dividerColor">#D0D5DA</color>
+    <color name="textSecondary">#7F8C8D</color>
     <color name="headerTextSecondary">#FDDEC8</color>
+
+    <!-- Paleta -->
+    <color name="atomicOrange">#FF5C23</color>
+    <color name="iceCreamBlue">#C8F3FF</color>
+    <color name="iceCreamBlueDark">#0288D1</color>
 
     <!-- Diferença de estoque -->
     <color name="diffPositive">#2E7D32</color>
     <color name="diffNegative">#C62828</color>
+
+    <!-- Section header -->
+    <color name="sectionHeader">#95A5A6</color>
+
+    <!-- Glassmorphism -->
+    <color name="gradientStart">#FFEEE6</color>
+    <color name="gradientEnd">#EAF4FF</color>
+    <color name="glassCardFill">#CCFFFFFF</color>
+    <color name="glassCardBorder">#66FFFFFF</color>
+    <color name="glassToolbarFill">#F0FFFFFF</color>
 </resources>

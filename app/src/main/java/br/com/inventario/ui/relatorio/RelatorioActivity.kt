@@ -1,5 +1,6 @@
 package br.com.inventario.ui.relatorio
 
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
@@ -49,6 +50,7 @@ class RelatorioActivity : TimeoutActivity() {
     private var recontagemConfirmada = false
     private var consolidarAposCarregar = false
     private var skipNextResume = false
+    private var dtReferenciaConsolidar: String? = null
     // perguntouEntrega é persistido no SessionManager para sobreviver à recriação da Activity
 
     // Buffer BT: engole key events do scanner para não acionar clique no RecyclerView
@@ -156,7 +158,7 @@ class RelatorioActivity : TimeoutActivity() {
             .show()
     }
 
-    private fun carregarRelatorio() {
+    private fun carregarRelatorio(tentativa: Int = 0) {
         binding.progressBar.visibility = View.VISIBLE
         val sessionId = session.getSessionId()
         val dep = session.getCdDeposito()
@@ -168,9 +170,6 @@ class RelatorioActivity : TimeoutActivity() {
                 // Sincroniza pendentes antes de exibir relatório completo
                 SyncManager.sincronizarPendentes(db, session)
 
-                // Após sync, nenhum pendente → esconde botão
-                binding.btnSincronizar.visibility = View.GONE
-
                 try {
                     val api = RetrofitClient.build(session)
                     val considerarEntrega = session.getConsiderarEntrega()
@@ -180,26 +179,51 @@ class RelatorioActivity : TimeoutActivity() {
                     val respRelatorio = deferRelatorio.await()
                     val respResumo    = deferResumo.await()
 
+                    val pendentes = if (sessionId != null)
+                        withContext(Dispatchers.IO) { db.bipag.countPendentes(sessionId) }
+                    else 0
+
                     if (respRelatorio.isSuccessful) {
                         val items = respRelatorio.body()?.toMutableList() ?: mutableListOf()
+
+                        // Itens em Room com sincronizado=0 que o lote não conseguiu enviar não aparecem no servidor.
+                        if (pendentes > 0 && sessionId != null) {
+                            val locais = withContext(Dispatchers.IO) { db.bipag.getRelatorioOffline(sessionId, dep) }
+                            val serverCdprodutos = items.map { it.cdproduto }.toSet()
+                            val faltando = locais.filter { it.cdproduto !in serverCdprodutos }
+                            items.addAll(faltando.map { it.toItemRelatorio() })
+                            binding.btnSincronizar.visibility = View.VISIBLE
+                            binding.tvAvisoNaoContados.text =
+                                "⚠ $pendentes scan(s) pendente(s) — toque em Sincronizar para garantir dados completos"
+                            binding.tvAvisoNaoContados.setBackgroundColor(0xFFFF8F00.toInt())
+                            binding.tvAvisoNaoContados.visibility = View.VISIBLE
+                        } else {
+                            binding.btnSincronizar.visibility = View.GONE
+                            binding.tvAvisoNaoContados.visibility = View.GONE
+                        }
+
                         adapter = RelatorioAdapter(items) { item, pos -> editarItem(item, pos) }
                         binding.recycler.adapter = adapter
-                        binding.tvAvisoNaoContados.visibility = View.GONE
                         atualizarResumo(items, online = true)
                         if (consolidarAposCarregar) {
                             consolidarAposCarregar = false
                             confirmarConsolidar()
                         }
                     } else {
+                        if (respRelatorio.code() >= 500 && tentativa < 2) {
+                            kotlinx.coroutines.delay(1_500L)
+                            carregarRelatorio(tentativa + 1)
+                            return@launch
+                        }
                         val errBody = try { respRelatorio.errorBody()?.string() ?: "" } catch (_: Exception) { "" }
                         val detail = try {
                             org.json.JSONObject(errBody).getString("detail")
                         } catch (_: Exception) { "HTTP ${respRelatorio.code()}" }
-                        Toast.makeText(this@RelatorioActivity, "Erro ao carregar relatório: $detail", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@RelatorioActivity, "Erro ao carregar relatório: $detail [INV-R01]", Toast.LENGTH_LONG).show()
                     }
 
                     val resumo = respResumo.body()
-                    if (resumo != null && resumo.naoContados > 0) {
+                    if (resumo != null && resumo.naoContados > 0 && pendentes == 0) {
                         val exemplos = if (resumo.produtosNaoContados.isNotEmpty())
                             "\nEx: " + resumo.produtosNaoContados.take(3).joinToString(", ")
                         else ""
@@ -210,7 +234,12 @@ class RelatorioActivity : TimeoutActivity() {
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+                    if (tentativa < 2) {
+                        kotlinx.coroutines.delay(1_500L)
+                        carregarRelatorio(tentativa + 1)
+                        return@launch
+                    }
+                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message} [INV-R02]", Toast.LENGTH_SHORT).show()
                     // Mesmo com falha de rede, habilita Consolidar se já há itens no adapter
                     val currentAdapter = adapter
                     if (currentAdapter != null) {
@@ -386,11 +415,11 @@ class RelatorioActivity : TimeoutActivity() {
                             val detail = try {
                                 org.json.JSONObject(errBody).getString("detail")
                             } catch (_: Exception) { "HTTP ${resp.code()}" }
-                            Toast.makeText(this@RelatorioActivity, "Erro ao remover: $detail", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@RelatorioActivity, "Erro ao remover: $detail [INV-R03]", Toast.LENGTH_LONG).show()
                             carregarRelatorio()
                         }
                     } catch (e: Exception) {
-                        Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@RelatorioActivity, "Erro: ${e.message} [INV-R04]", Toast.LENGTH_SHORT).show()
                         carregarRelatorio()
                     }
                 }
@@ -420,6 +449,26 @@ class RelatorioActivity : TimeoutActivity() {
 
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_consolidar, null)
         view.findViewById<android.widget.TextView>(R.id.tvMensagemConsolidar).text = msg
+
+        val btnData = view.findViewById<MaterialButton>(R.id.btnDataReferencia)
+        if (!session.isSupervisor()) {
+            btnData.visibility = View.GONE
+        } else {
+            dtReferenciaConsolidar?.let { btnData.text = "📅 Data: $it" }
+        }
+        btnData.setOnClickListener {
+            val hoje = java.util.Calendar.getInstance()
+            DatePickerDialog(this, { _, year, month, day ->
+                val selecionada = "%04d-%02d-%02d".format(year, month + 1, day)
+                val hojeStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                if (selecionada > hojeStr) {
+                    Toast.makeText(this, "A data não pode ser futura", Toast.LENGTH_SHORT).show()
+                } else {
+                    dtReferenciaConsolidar = selecionada
+                    btnData.text = "📅 Data: $selecionada"
+                }
+            }, hoje.get(java.util.Calendar.YEAR), hoje.get(java.util.Calendar.MONTH), hoje.get(java.util.Calendar.DAY_OF_MONTH)).show()
+        }
 
         var dialog: AlertDialog? = null
 
@@ -597,9 +646,11 @@ class RelatorioActivity : TimeoutActivity() {
                     sessionId                 = sessionId,
                     justificativaSemRecontagem = justificativaSemRecontagem,
                     considerarEntrega         = session.getConsiderarEntrega(),
+                    dtReferencia              = dtReferenciaConsolidar,
                 ))
                 if (response.isSuccessful) {
                     recontagemConfirmada = false
+                    dtReferenciaConsolidar = null
                     session.setConsolidarBloqueado(session.getCdDeposito(), false)
 
                     // Limpa dados locais desta sessão e inicia uma nova
@@ -624,7 +675,7 @@ class RelatorioActivity : TimeoutActivity() {
                     if (response.code() == 403 && detail.contains("Supervisor", ignoreCase = true) && !session.isSupervisor()) {
                         pedirSupervisor()
                     } else {
-                        Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@RelatorioActivity, "$detail [INV-C01]", Toast.LENGTH_LONG).show()
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -636,9 +687,14 @@ class RelatorioActivity : TimeoutActivity() {
                     try {
                         val histResp = RetrofitClient.build(session).historico(session.getCdDeposito())
                         if (histResp.isSuccessful) {
-                            val hoje = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                                .format(java.util.Date())
-                            consolidouSilenciosamente = histResp.body()?.firstOrNull()?.data?.startsWith(hoje) == true
+                            val tresMinAtras = System.currentTimeMillis() - 3 * 60 * 1000
+                            consolidouSilenciosamente = histResp.body()?.firstOrNull()?.data?.let { dateStr ->
+                                try {
+                                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+                                    val parsed = sdf.parse(dateStr.take(19))
+                                    parsed != null && parsed.time >= tresMinAtras
+                                } catch (_: Exception) { false }
+                            } == true
                         }
                     } catch (_: Exception) {}
                 }
@@ -652,7 +708,7 @@ class RelatorioActivity : TimeoutActivity() {
                     Toast.makeText(this@RelatorioActivity, "Consolidação verificada no histórico. Dados atualizados.", Toast.LENGTH_LONG).show()
                     finish()
                 } else {
-                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message} [INV-C02]", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 binding.progressBar.visibility = View.GONE
@@ -682,12 +738,12 @@ class RelatorioActivity : TimeoutActivity() {
                         val detail = try {
                             org.json.JSONObject(resp.errorBody()?.string() ?: "").getString("detail")
                         } catch (_: Exception) { "Erro ao atualizar quantidade" }
-                        Toast.makeText(this@RelatorioActivity, detail, Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@RelatorioActivity, "$detail [INV-R05]", Toast.LENGTH_LONG).show()
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@RelatorioActivity, "Erro: ${e.message} [INV-R06]", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 // Offline: salva delta no Room; sincronizado ao reconectar via lote

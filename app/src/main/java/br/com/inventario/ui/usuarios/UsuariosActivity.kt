@@ -9,6 +9,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import br.com.inventario.R
 import br.com.inventario.data.api.RetrofitClient
 import br.com.inventario.data.model.SenhaMobileRequest
 import br.com.inventario.data.model.UsuarioMobile
@@ -130,6 +131,21 @@ class UsuariosActivity : TimeoutActivity() {
             }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        if (session.isMI() || session.canManageUsers()) {
+            menuInflater.inflate(R.menu.menu_usuarios, menu)
+        }
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == R.id.action_dispositivos) {
+            startActivity(android.content.Intent(this, DevicesActivity::class.java))
+            return true
+        }
+        return super.onOptionsItemSelected(item)
     }
 
     override fun onSupportNavigateUp(): Boolean { finish(); return true }

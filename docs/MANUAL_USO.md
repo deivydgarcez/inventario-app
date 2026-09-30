@@ -19,6 +19,7 @@ Guia completo para usar o aplicativo de inventário nos celulares Android — do
 11. [Gerenciar Operadores](#11-gerenciar-operadores)
 12. [Gerenciar Usuários Mobile](#12-gerenciar-usuários-mobile)
 13. [Fluxo Completo de Inventário](#13-fluxo-completo-de-inventário)
+14. [Gerenciar Dispositivos Autorizados](#14-gerenciar-dispositivos-autorizados)
 
 ---
 
@@ -739,4 +740,42 @@ flowchart TD
 
 ---
 
-> **Versão do manual:** Julho/2026 — App Invec v1.7.0
+---
+
+## 14. Gerenciar Dispositivos Autorizados
+
+> Disponível apenas para usuários **MI** e **Admin Mobile**.
+
+Controla quais celulares podem fazer login no app. A licença do cliente define o número máximo de aparelhos permitidos (pode ser ilimitado).
+
+### Como acessar
+
+1. Na tela **Usuários Mobile**, toque no menu ⋮ (três pontos) no canto superior direito
+2. Selecione **"Dispositivos autorizados"**
+
+### O que aparece na lista
+
+Cada aparelho mostra:
+- **Nome do modelo** (ex.: Samsung Galaxy A54)
+- **ID parcial** do dispositivo
+- **Data de cadastro** — primeira vez que o aparelho fez login
+- **Último acesso** — última vez que fez login com sucesso
+
+### Remover um dispositivo
+
+1. Toque em **"Remover"** no aparelho desejado
+2. Confirme no diálogo
+
+O slot fica livre imediatamente — o próximo aparelho que tentar login entrará normalmente.
+
+### Quando o limite é atingido
+
+Se um novo aparelho tentar fazer login e o limite já estiver cheio, ele verá um diálogo:
+
+> *"Limite de licença atingido (X dispositivo(s) autorizado(s)). Contate o administrador para liberar um slot."*
+
+O administrador deve remover um aparelho antigo/não utilizado para liberar espaço.
+
+---
+
+> **Versão do manual:** Setembro/2026 — App Invec v1.8.0

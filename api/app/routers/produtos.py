@@ -83,6 +83,42 @@ def buscar_por_barcode(
     return produto
 
 
+@router.get("/cdproduto/{cdproduto}", response_model=ProdutoResponse)
+def buscar_por_cdproduto(
+    cdproduto: int,
+    cddeposito: int = Query(..., description="Depósito para consultar estoque"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Busca produto pelo código interno (CDPRODUTO) — para produtos sem código de barras."""
+    with get_connection() as con:
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT FIRST 1
+                P.CDPRODUTO,
+                P.PRODUTO,
+                P.CODIGOBARRA,
+                M.QTDEATUAL,
+                P.INATIVO
+            FROM PRODUTO P
+            LEFT JOIN MOVIMENTO M
+                ON M.CDPRODUTO = CAST(P.CDPRODUTO AS VARCHAR(10))
+               AND M.CDDEPOSITO = ?
+            WHERE P.CDPRODUTO = ?
+            """,
+            (cddeposito, cdproduto),
+        )
+        produto = fetchone_as_dict(cur)
+
+    if not produto:
+        raise HTTPException(status_code=404, detail=f"Produto #{cdproduto} não encontrado")
+
+    if (produto.get("inativo") or 0) == -1:
+        raise HTTPException(status_code=404, detail="Produto inativo")
+
+    return produto
+
+
 @router.get("/{cddeposito}/catalogo", response_model=CatalogoResponse)
 def catalogo_offline(
     cddeposito: int,

@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/screenBackground"
+    android:background="@drawable/bg_gradient"
     android:fitsSystemWindows="true">
 
     <androidx.appcompat.widget.Toolbar
@@ -12,11 +12,12 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:minHeight="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        android:background="@color/glassToolbarFill"
+        android:elevation="0dp"
+        android:theme="@style/Theme.Inventario.ToolbarOverlay"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
 
-    <!-- Camera direto abaixo da toolbar, sem nada entre eles -->
+    <!-- Camera preview (recontagem inline) -->
     <FrameLayout
         android:id="@+id/cameraContainer"
         android:layout_width="match_parent"
@@ -57,7 +58,7 @@
             android:layout_width="240dp"
             android:layout_height="2dp"
             android:layout_gravity="center"
-            android:background="#FFCC5B2A"
+            android:background="@color/atomicOrange"
             android:alpha="0.9" />
 
     </FrameLayout>
@@ -68,7 +69,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="#FF1E1E1E"
+        android:background="@color/glassToolbarFill"
         android:paddingHorizontal="16dp"
         android:paddingVertical="10dp"
         android:gravity="center_vertical"
@@ -93,7 +94,7 @@
                 android:id="@+id/tvLastScanNome"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/colorPrimaryText"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:ellipsize="end"
@@ -103,7 +104,7 @@
                 android:id="@+id/tvLastScanInfo"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#AAAAAA"
+                android:textColor="@color/textSecondary"
                 android:textSize="12sp" />
 
         </LinearLayout>
@@ -125,8 +126,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="@color/cardBackground"
-        android:elevation="8dp">
+        android:background="@color/glassToolbarFill">
 
         <!-- Status + modo + loading -->
         <LinearLayout
@@ -154,6 +154,10 @@
                 android:layout_height="34dp"
                 android:text="BT"
                 android:textSize="12sp"
+                android:elevation="0dp"
+                android:stateListAnimator="@null"
+                app:backgroundTint="#26FFFFFF"
+                app:strokeColor="#66FFFFFF"
                 app:cornerRadius="17dp" />
 
             <ProgressBar
@@ -166,7 +170,7 @@
 
         </LinearLayout>
 
-        <!-- Switch múltiplas leituras (só câmera) -->
+        <!-- Switch múltiplas leituras -->
         <LinearLayout
             android:id="@+id/switchRow"
             android:layout_width="match_parent"
@@ -209,7 +213,10 @@
                 android:layout_marginEnd="6dp"
                 android:text="Escanear"
                 android:textSize="14sp"
-                app:cornerRadius="10dp"
+                android:elevation="0dp"
+                android:stateListAnimator="@null"
+                app:backgroundTint="@color/colorPrimary"
+                app:cornerRadius="16dp"
                 android:visibility="gone" />
 
             <com.google.android.material.button.MaterialButton
@@ -220,7 +227,11 @@
                 android:layout_weight="1"
                 android:text="Digitar código"
                 android:textSize="14sp"
-                app:cornerRadius="10dp" />
+                android:elevation="0dp"
+                android:stateListAnimator="@null"
+                app:backgroundTint="#26FFFFFF"
+                app:strokeColor="#66FFFFFF"
+                app:cornerRadius="16dp" />
 
         </LinearLayout>
 
@@ -234,7 +245,10 @@
             android:text="Finalizar Recontagem"
             android:textSize="16sp"
             android:textStyle="bold"
-            app:cornerRadius="10dp" />
+            android:elevation="0dp"
+            android:stateListAnimator="@null"
+            app:backgroundTint="@color/colorPrimary"
+            app:cornerRadius="16dp" />
 
     </LinearLayout>
 

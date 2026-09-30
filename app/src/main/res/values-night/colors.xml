@@ -1,8 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="screenBackground">#121212</color>
-    <color name="cardBackground">#1E1E1E</color>
-    <color name="dividerColor">#2C2C2C</color>
-    <color name="textSecondary">#AAAAAA</color>
-    <color name="colorPrimaryText">#E0E0E0</color>
+    <!-- Neumorphism dark — paleta navy/cool, contraste adequado -->
+    <color name="nmBackground">#1C2128</color>
+    <color name="nmShadowLight">#2D3848</color>
+    <color name="nmShadowDark">#0A0D12</color>
+    <color name="screenBackground">#1C2128</color>
+    <color name="cardBackground">#1C2128</color>
+
+    <color name="dividerColor">#252D38</color>
+    <color name="textSecondary">#8B99A8</color>
+    <color name="colorPrimaryText">#CDD9E5</color>
+    <color name="sectionHeader">#636E7B</color>
+
+    <!-- Glassmorphism dark -->
+    <color name="gradientStart">#090E1A</color>
+    <color name="gradientEnd">#1A2840</color>
+    <color name="glassCardFill">#26FFFFFF</color>
+    <color name="glassCardBorder">#40FFFFFF</color>
+    <color name="glassToolbarFill">#E6101520</color>
 </resources>

@@ -68,6 +68,8 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.mlkit.barcode)
 
+    implementation("com.github.fornewid:neumorphism:0.3.0")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("io.mockk:mockk:1.13.12")
     testImplementation("org.json:json:20231013")
