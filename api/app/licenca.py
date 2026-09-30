@@ -125,3 +125,9 @@ def get_max_dispositivos() -> int | None:
         return int(v)
     except (ValueError, TypeError):
         return None
+
+
+def get_cliente_info() -> tuple[str, str]:
+    """Retorna (cliente, cnpj) da licença ativa."""
+    p = _payload_cache or {}
+    return p.get("cliente", ""), p.get("cnpj", "")

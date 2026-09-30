@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_connection, fetchall_as_dict
 from app.security import get_current_user
 from app.models.schemas import DispositivoResponse
+from app.notificacoes import notificar_dispositivo_removido
 
 router = APIRouter(prefix="/admin", tags=["Dispositivos"])
 
@@ -39,13 +40,16 @@ def remover_dispositivo(
     with get_connection() as con:
         cur = con.cursor()
         cur.execute(
-            "SELECT ID FROM DISPOSITIVOS_AUTORIZADOS WHERE ID = ?",
+            "SELECT ID, DEVICE_ID, NOME_DISPOSITIVO FROM DISPOSITIVOS_AUTORIZADOS WHERE ID = ?",
             (dispositivo_id,)
         )
-        if not cur.fetchone():
+        row = cur.fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail="Dispositivo não encontrado")
+        _, device_id, device_name = row
         cur.execute(
             "DELETE FROM DISPOSITIVOS_AUTORIZADOS WHERE ID = ?",
             (dispositivo_id,)
         )
+    notificar_dispositivo_removido(device_id, device_name or "", current_user.get("login", ""))
     return {"mensagem": "Dispositivo removido"}

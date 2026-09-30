@@ -14,19 +14,27 @@ import customtkinter as ctk
 
 ctk.set_appearance_mode("light")
 
-# ── Paleta — espelha o design glassmorphism do app ───────────────────────────
-ORANGE      = "#CC5B2A"
-ORANGE_HOV  = "#A8431A"
-BG_ROOT     = "#F5EDE7"          # peach claro (gradientStart aproximado)
-CARD_BG     = "#FFFFFF"
-CARD_BORDER = "#E8DDD6"
-ENTRY_BG    = "#F5F0ED"
-ENTRY_BOR   = "#D8CEC8"
-TEXT_PRI    = "#1A1A1A"
-TEXT_SEC    = "#777777"
-GREEN       = "#2E7D32"
-RED_C       = "#C62828"
-AMBER       = "#E65100"
+# ── Paleta — espelha exatamente o glassmorphism do app Android ────────────────
+ORANGE     = "#CC5B2A"
+ORANGE_HOV = "#A8431A"
+CARD_BG    = "#F2F7FC"    # branco com leve tint azul-gelo (simula frosted glass)
+GLASS_BOR  = "#FFFFFF"    # borda branca — aresta do vidro
+ENTRY_BG   = "#EAF2FA"
+ENTRY_BOR  = "#C8DCF0"
+TEXT_PRI   = "#1A1A1A"
+TEXT_SEC   = "#5A6E80"
+GREEN      = "#2E7D32"
+RED_C      = "#C62828"
+AMBER      = "#E65100"
+
+# Gradiente de fundo: pêssego (topo) → azul-gelo (base) — igual ao bg_gradient.xml
+GRAD_TOP = (0xF5, 0xCC, 0xB0)   # #F5CCB0
+GRAD_BOT = (0xB8, 0xD4, 0xEC)   # #B8D4EC
+
+try:
+    from pontual_secrets import PONTUAL_WEBHOOK as _PONTUAL_WEBHOOK
+except ImportError:
+    _PONTUAL_WEBHOOK = ""
 
 SERVICE_NAME    = "InvecAPI"
 SERVICE_DISPLAY = "Invec - API Inventario"
@@ -86,40 +94,18 @@ def service_status() -> str:
     return 'absent'
 
 
-# ── Helpers de layout ────────────────────────────────────────────────────────
-
-def _lbl(parent, text, row, bold=False, color=TEXT_PRI):
-    font = ctk.CTkFont("Segoe UI", 11, "bold" if bold else "normal")
-    ctk.CTkLabel(parent, text=text, font=font, text_color=color, anchor="w").grid(
-        row=row, column=0, sticky="w", padx=(4, 12), pady=(10, 2)
-    )
-
-
-def _entry(parent, var, row, state="normal", show=None):
-    kw = dict(textvariable=var, fg_color=ENTRY_BG, border_color=ENTRY_BOR,
-              border_width=1, corner_radius=10, text_color=TEXT_PRI, state=state)
-    if show:
-        kw["show"] = show
-    w = ctk.CTkEntry(parent, **kw)
-    w.grid(row=row, column=1, columnspan=2, sticky="ew", padx=(0, 4), pady=(10, 2))
-    return w
-
-
-def _sep(parent, row):
-    ctk.CTkFrame(parent, fg_color="#EAE0DA", height=1, corner_radius=0).grid(
-        row=row, column=0, columnspan=3, sticky="ew", padx=4, pady=12
-    )
-
-
-# ── Aplicação ────────────────────────────────────────────────────────────────
-
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Invec — Instalador do Servidor")
-        self.geometry("640x720")
+        self.geometry("700x760")
         self.resizable(False, False)
-        self.configure(fg_color=BG_ROOT)
+        self.configure(fg_color="#F5CCB0")   # fallback enquanto canvas carrega
+
+        # ── Canvas de gradiente (camada de fundo) ─────────────────────────────
+        self._bg = tk.Canvas(self, bd=0, highlightthickness=0)
+        self._bg.place(x=0, y=0, relwidth=1, relheight=1)
+        self.after(5, self._draw_gradient)
 
         self.v_install    = tk.StringVar(value=DEFAULT_DIR)
         self.v_db         = tk.StringVar(value=r"C:\Administracao\DB\MIAUTOMEC.FDB")
@@ -134,144 +120,179 @@ class App(ctk.CTk):
         self.after(200, self._refresh_status)
         threading.Thread(target=self._load_machine_id, daemon=True).start()
 
+    def _draw_gradient(self):
+        w = self.winfo_width() or 700
+        h = self.winfo_height() or 760
+        self._bg.delete("all")
+        steps = 120
+        for i in range(steps):
+            t = i / steps
+            r = int(GRAD_TOP[0] + (GRAD_BOT[0] - GRAD_TOP[0]) * t)
+            g = int(GRAD_TOP[1] + (GRAD_BOT[1] - GRAD_TOP[1]) * t)
+            b = int(GRAD_TOP[2] + (GRAD_BOT[2] - GRAD_TOP[2]) * t)
+            y0 = int(h * i / steps)
+            y1 = int(h * (i + 1) / steps) + 1
+            self._bg.create_rectangle(0, y0, w, y1, fill=f"#{r:02x}{g:02x}{b:02x}", outline="")
+        self._bg.lower("all")
+
     # ── Layout ───────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # Header laranja
-        hdr = ctk.CTkFrame(self, fg_color=ORANGE, corner_radius=0, height=60)
+        # ── Cabeçalho — toolbar branca com accent laranja (igual ao app) ──────
+        hdr = ctk.CTkFrame(self, fg_color=CARD_BG, corner_radius=0, height=78,
+                           border_width=0)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
+
+        # Barra vertical laranja à esquerda
+        ctk.CTkFrame(hdr, fg_color=ORANGE, width=6, corner_radius=0).pack(
+            side="left", fill="y")
+
+        hdr_txt = ctk.CTkFrame(hdr, fg_color="transparent")
+        hdr_txt.pack(side="left", fill="both", expand=True, padx=20, pady=10)
         ctk.CTkLabel(
-            hdr,
-            text="  Invec  ·  Instalador do Servidor",
-            text_color="white",
-            font=ctk.CTkFont("Segoe UI", 14, "bold"),
-            anchor="w",
-        ).pack(fill="x", padx=20, pady=18)
-
-        # Card glass principal
-        card = ctk.CTkScrollableFrame(
-            self,
-            fg_color=CARD_BG,
-            corner_radius=16,
-            border_width=1,
-            border_color=CARD_BORDER,
-            scrollbar_button_color="#D8CEC8",
-            scrollbar_button_hover_color="#C0B0A8",
-        )
-        card.pack(fill="both", expand=True, padx=16, pady=14)
-        card.columnconfigure(1, weight=1)
-
-        r = 0
-
-        # Diretório de instalação
-        _lbl(card, "Diretório de instalação", r)
-        dir_fr = ctk.CTkFrame(card, fg_color="transparent")
-        dir_fr.grid(row=r, column=1, columnspan=2, sticky="ew", padx=(0, 4), pady=(10, 2))
-        dir_fr.columnconfigure(0, weight=1)
-        ctk.CTkEntry(dir_fr, textvariable=self.v_install, fg_color=ENTRY_BG,
-                     border_color=ENTRY_BOR, border_width=1, corner_radius=10,
-                     text_color=TEXT_PRI).grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        ctk.CTkButton(dir_fr, text="…", width=40, height=34,
-                      fg_color=ORANGE, hover_color=ORANGE_HOV,
-                      text_color="white", corner_radius=10,
-                      command=self._browse_install_dir).grid(row=0, column=1)
-        r += 1
-
-        _sep(card, r); r += 1
-
-        # Banco Firebird
-        _lbl(card, "Banco de dados Firebird (.FDB)", r, bold=True)
-        db_fr = ctk.CTkFrame(card, fg_color="transparent")
-        db_fr.grid(row=r, column=1, columnspan=2, sticky="ew", padx=(0, 4), pady=(10, 2))
-        db_fr.columnconfigure(0, weight=1)
-        ctk.CTkEntry(db_fr, textvariable=self.v_db, fg_color=ENTRY_BG,
-                     border_color=ENTRY_BOR, border_width=1, corner_radius=10,
-                     text_color=TEXT_PRI).grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        ctk.CTkButton(db_fr, text="…", width=40, height=34,
-                      fg_color=ORANGE, hover_color=ORANGE_HOV,
-                      text_color="white", corner_radius=10,
-                      command=self._browse_db).grid(row=0, column=1)
-        r += 1
-
-        _lbl(card, "Host Firebird", r)
-        _entry(card, self.v_host, r); r += 1
-
-        _lbl(card, "ID da Empresa (IDEMPRESA)", r)
-        ctk.CTkEntry(card, textvariable=self.v_idempresa, width=90,
-                     fg_color=ENTRY_BG, border_color=ENTRY_BOR, border_width=1,
-                     corner_radius=10, text_color=TEXT_PRI).grid(
-            row=r, column=1, sticky="w", padx=(0, 4), pady=(10, 2))
-        r += 1
-
-        _sep(card, r); r += 1
-
-        # Chave de Licença
-        _lbl(card, "Chave de Licença", r, bold=True)
-        _entry(card, self.v_license, r); r += 1
-
-        # ID da máquina
-        _lbl(card, "ID desta máquina", r)
-        mid_fr = ctk.CTkFrame(card, fg_color="transparent")
-        mid_fr.grid(row=r, column=1, columnspan=2, sticky="ew", padx=(0, 4), pady=(10, 2))
-        mid_fr.columnconfigure(0, weight=1)
-        ctk.CTkEntry(mid_fr, textvariable=self.v_machine_id, state="disabled",
-                     fg_color=ENTRY_BG, border_color=ENTRY_BOR, border_width=1,
-                     corner_radius=10, text_color=TEXT_SEC).grid(
-            row=0, column=0, sticky="ew", padx=(0, 8))
-        ctk.CTkButton(mid_fr, text="Copiar", width=80, height=34,
-                      fg_color="transparent", border_width=1, border_color=ORANGE,
-                      text_color=ORANGE, hover_color="#FEF0E8", corner_radius=10,
-                      font=ctk.CTkFont("Segoe UI", 11),
-                      command=self._copy_machine_id).grid(row=0, column=1)
-        r += 1
-
+            hdr_txt, text="INVEC",
+            font=ctk.CTkFont("Segoe UI", 22, "bold"),
+            text_color=ORANGE, anchor="w",
+        ).pack(anchor="w")
         ctk.CTkLabel(
-            card,
-            text="Envie o ID desta máquina à Pontual para receber uma licença vinculada.",
-            font=ctk.CTkFont("Segoe UI", 10),
+            hdr_txt, text="Instalador do Servidor",
+            font=ctk.CTkFont("Segoe UI", 11),
             text_color=TEXT_SEC, anchor="w",
-        ).grid(row=r, column=1, columnspan=2, sticky="w", padx=(0, 4), pady=(0, 4))
-        r += 1
+        ).pack(anchor="w")
 
-        _sep(card, r); r += 1
+        ctk.CTkLabel(hdr, text="v1.8.0",
+                     font=ctk.CTkFont("Segoe UI", 10),
+                     text_color=TEXT_SEC).pack(side="right", padx=20)
 
-        # Status
+        # Linha laranja separando header do conteúdo
+        ctk.CTkFrame(self, fg_color=ORANGE, height=3, corner_radius=0).pack(fill="x")
+
+        # ── Card glass ────────────────────────────────────────────────────────
+        # Wrapper externo: borda branca (aresta do vidro)
+        outer = ctk.CTkFrame(self, fg_color=GLASS_BOR, corner_radius=18,
+                             border_width=0)
+        outer.pack(fill="both", expand=True, padx=16, pady=14)
+
+        # Inner: fundo tintado azul-gelo (frosted glass sobre o gradiente)
+        card = ctk.CTkFrame(outer, fg_color=CARD_BG, corner_radius=16,
+                            border_width=0)
+        card.pack(fill="both", expand=True, padx=3, pady=3)
+
+        # ── Helpers locais ────────────────────────────────────────────────────
+        def _section(title: str):
+            wrap = ctk.CTkFrame(card, fg_color="transparent")
+            wrap.pack(fill="x", padx=14, pady=(14, 6))
+            ctk.CTkLabel(wrap, text=title,
+                         font=ctk.CTkFont("Segoe UI", 9, "bold"),
+                         text_color=ORANGE).pack(side="left")
+            ctk.CTkFrame(wrap, fg_color=ENTRY_BOR, height=1,
+                         corner_radius=0).pack(side="left", fill="x",
+                                               expand=True, padx=(10, 0))
+
+        def _row(label: str) -> ctk.CTkFrame:
+            f = ctk.CTkFrame(card, fg_color="transparent")
+            f.pack(fill="x", padx=14, pady=(0, 6))
+            ctk.CTkLabel(f, text=label, width=172,
+                         font=ctk.CTkFont("Segoe UI", 11),
+                         text_color=TEXT_SEC, anchor="w").pack(side="left")
+            return f
+
+        def _entry(parent, var, state="normal", width=None):
+            kw = dict(textvariable=var, fg_color=ENTRY_BG, border_color=ENTRY_BOR,
+                      border_width=1, corner_radius=8, text_color=TEXT_PRI,
+                      state=state)
+            if width:
+                kw["width"] = width
+            e = ctk.CTkEntry(parent, **kw)
+            e.pack(side="left", fill="x" if not width else None,
+                   expand=not bool(width))
+            return e
+
+        def _browse_btn(parent, cmd):
+            ctk.CTkButton(parent, text="…", width=40, height=34,
+                          fg_color=ORANGE, hover_color=ORANGE_HOV,
+                          text_color="white", corner_radius=8,
+                          command=cmd).pack(side="left", padx=(8, 0))
+
+        def _hint(text: str):
+            ctk.CTkLabel(card, text=text,
+                         font=ctk.CTkFont("Segoe UI", 9),
+                         text_color=TEXT_SEC, anchor="w").pack(
+                fill="x", padx=(186 + 14, 14), pady=(0, 4))
+
+        def _divider():
+            ctk.CTkFrame(card, fg_color=ENTRY_BOR, height=1,
+                         corner_radius=0).pack(fill="x", padx=14, pady=(10, 0))
+
+        # ─── Instalação ───────────────────────────────────────────────────────
+        _section("INSTALAÇÃO")
+        r = _row("Diretório")
+        _entry(r, self.v_install)
+        _browse_btn(r, self._browse_install_dir)
+
+        # ─── Banco de Dados ───────────────────────────────────────────────────
+        _section("BANCO DE DADOS FIREBIRD")
+        r = _row("Arquivo .FDB")
+        _entry(r, self.v_db)
+        _browse_btn(r, self._browse_db)
+
+        r = _row("Host")
+        _entry(r, self.v_host)
+
+        r = _row("ID da Empresa")
+        _entry(r, self.v_idempresa, width=90)
+
+        # ─── Licença ──────────────────────────────────────────────────────────
+        _section("LICENÇA PONTUAL TECNOLOGIA")
+        r = _row("Chave de Licença")
+        _entry(r, self.v_license)
+        _hint("O limite de dispositivos móveis está codificado na chave de licença.")
+
+        r = _row("ID desta máquina")
+        _entry(r, self.v_machine_id, state="disabled")
+        ctk.CTkButton(r, text="Copiar", width=80, height=34,
+                      fg_color="transparent", border_width=1,
+                      border_color=ORANGE, text_color=ORANGE,
+                      hover_color=ENTRY_BG, corner_radius=8,
+                      font=ctk.CTkFont("Segoe UI", 11),
+                      command=self._copy_machine_id).pack(side="left", padx=(8, 0))
+        _hint("Envie este ID à Pontual Tecnologia para uma licença vinculada a esta máquina.")
+
+        # ─── Status ───────────────────────────────────────────────────────────
+        _divider()
         self.lbl_status = ctk.CTkLabel(
             card, textvariable=self.v_status,
-            font=ctk.CTkFont("Segoe UI", 11), text_color=TEXT_SEC,
-            anchor="w", wraplength=530,
-        )
-        self.lbl_status.grid(row=r, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 10))
-        r += 1
+            font=ctk.CTkFont("Segoe UI", 11),
+            text_color=TEXT_SEC, anchor="w", wraplength=620)
+        self.lbl_status.pack(fill="x", padx=14, pady=(10, 8))
 
-        # Botões
-        bf = ctk.CTkFrame(card, fg_color="transparent")
-        bf.grid(row=r, column=0, columnspan=3, pady=(4, 12))
-
+        # ─── Botões ───────────────────────────────────────────────────────────
+        _divider()
         self.btn_install = ctk.CTkButton(
-            bf,
-            text="Instalar / Atualizar",
+            card, text="Instalar / Atualizar",
             fg_color=ORANGE, hover_color=ORANGE_HOV,
-            text_color="white", corner_radius=16,
-            height=46, width=210,
-            font=ctk.CTkFont("Segoe UI", 13, "bold"),
-            command=self._on_install,
-        )
-        self.btn_install.pack(side="left", padx=(0, 10))
+            text_color="white", corner_radius=12,
+            height=48, font=ctk.CTkFont("Segoe UI", 13, "bold"),
+            command=self._on_install)
+        self.btn_install.pack(fill="x", padx=14, pady=(10, 8))
 
-        for txt, cmd in [
+        ghost_row = ctk.CTkFrame(card, fg_color="transparent")
+        ghost_row.pack(fill="x", padx=14, pady=(0, 14))
+        ghost_btns = [
             ("Reiniciar Serviço", self._on_restart),
             ("Desinstalar",       self._on_uninstall),
             ("Fechar",            self.destroy),
-        ]:
+        ]
+        for i, (txt, cmd) in enumerate(ghost_btns):
             ctk.CTkButton(
-                bf, text=txt, command=cmd,
-                fg_color="transparent", border_width=1, border_color="#D0C0B8",
-                text_color=TEXT_PRI, hover_color=ENTRY_BG,
-                corner_radius=16, height=46,
+                ghost_row, text=txt, command=cmd,
+                fg_color="transparent", border_width=1,
+                border_color=ENTRY_BOR, text_color=TEXT_PRI,
+                hover_color=ENTRY_BG, corner_radius=10, height=40,
                 font=ctk.CTkFont("Segoe UI", 11),
-            ).pack(side="left", padx=4)
+            ).pack(side="left", fill="x", expand=True,
+                   padx=(0, 0 if i == len(ghost_btns) - 1 else 8))
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -356,6 +377,7 @@ class App(ctk.CTk):
                 f"IDEMPRESA={self.v_idempresa.get() or '1'}\n"
                 f"LICENSE_KEY={self.v_license.get()}\n"
                 f"JWT_SECRET={jwt_secret}\n"
+                f"DISCORD_WEBHOOK={_PONTUAL_WEBHOOK}\n"
             )
         try:
             subprocess.run(
@@ -409,10 +431,7 @@ class App(ctk.CTk):
         self._set_status("Instalando dependências Python (pip)...")
         req = os.path.join(install_dir, "requirements.txt")
         python_exe = shutil.which("python") or shutil.which("python3") or sys.executable
-        subprocess.run(
-            [python_exe, "-m", "pip", "install", "-r", req, "--quiet"],
-            check=True,
-        )
+        subprocess.run([python_exe, "-m", "pip", "install", "-r", req, "--quiet"], check=True)
         return os.path.join(install_dir, "server.py")
 
     # ── Ações dos botões ─────────────────────────────────────────────────────
@@ -422,17 +441,13 @@ class App(ctk.CTk):
             messagebox.showerror("Erro", "Selecione o caminho do banco de dados Firebird (.FDB).")
             return
         if not self.v_license.get().strip():
-            messagebox.showerror(
-                "Erro",
-                "Informe a Chave de Licença.\n\nSolicite a chave para a Pontual Tecnologia."
-            )
+            messagebox.showerror("Erro",
+                "Informe a Chave de Licença.\n\nSolicite a chave para a Pontual Tecnologia.")
             return
         if not is_admin():
-            messagebox.showerror(
-                "Permissão necessária",
+            messagebox.showerror("Permissão necessária",
                 "Execute o instalador como Administrador.\n"
-                "(clique direito no arquivo → Executar como administrador)"
-            )
+                "(clique direito no arquivo → Executar como administrador)")
             return
         self.btn_install.configure(state="disabled")
         threading.Thread(target=self._install_worker, daemon=True).start()
@@ -444,40 +459,23 @@ class App(ctk.CTk):
         ps_exe  = os.path.join(sysroot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 
         with open(log_fw, "w", encoding="utf-8") as lfw:
-            def log(msg: str):
+            def log(msg):
                 lfw.write(msg + "\n"); lfw.flush()
 
-            log("=== Estado do Windows Firewall (MpsSvc) ===")
             r_svc = subprocess.run(["sc", "query", "MpsSvc"], capture_output=True, text=True, errors="replace")
-            log(r_svc.stdout.strip())
-
             svc_running = "RUNNING" in r_svc.stdout
             svc_stopped = "STOPPED" in r_svc.stdout
-
             if not svc_running and not svc_stopped:
-                log("MpsSvc nao encontrado. Firewall nao instalado — porta ja acessivel na rede.")
                 return True
-
             if svc_stopped:
-                log("\nMpsSvc PARADO. Tentando iniciar...")
-                r_start = subprocess.run(["sc", "start", "MpsSvc"], capture_output=True, text=True, errors="replace")
-                log(f"sc start MpsSvc => exit {r_start.returncode}: {r_start.stdout.strip()}")
+                subprocess.run(["sc", "start", "MpsSvc"], capture_output=True)
                 _time.sleep(2)
-                r_check = subprocess.run(["sc", "query", "MpsSvc"], capture_output=True, text=True, errors="replace")
-                svc_running = "RUNNING" in r_check.stdout
-                log(f"Apos iniciar: {'RUNNING' if svc_running else 'ainda STOPPED'}")
 
-            log("\n=== Estado dos perfis de firewall ===")
-            r_state = subprocess.run(
-                [netsh, "advfirewall", "show", "allprofiles", "state"],
-                capture_output=True, text=True, errors="replace"
-            )
-            log(r_state.stdout.strip())
+            r_state = subprocess.run([netsh, "advfirewall", "show", "allprofiles", "state"],
+                                     capture_output=True, text=True, errors="replace")
             if r_state.stdout.lower().count("off") >= 3:
-                log("Todos os perfis estao OFF — firewall desativado, porta ja acessivel.")
                 return True
 
-            log("\n=== PowerShell New-NetFirewallRule ===")
             ps_cmd = (
                 f"Remove-NetFirewallRule -DisplayName '{SERVICE_NAME}' -ErrorAction SilentlyContinue; "
                 f"New-NetFirewallRule -DisplayName '{SERVICE_NAME}' -Direction Inbound "
@@ -485,38 +483,23 @@ class App(ctk.CTk):
             )
             r_ps = subprocess.run(
                 [ps_exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
-                capture_output=True, text=True, errors="replace"
-            )
-            lfw.write(r_ps.stdout); lfw.write(r_ps.stderr)
-            log(f"exit code: {r_ps.returncode}")
-
+                capture_output=True, text=True, errors="replace")
+            log(r_ps.stdout + r_ps.stderr)
             if r_ps.returncode == 0:
-                r_show = subprocess.run(
-                    [netsh, "advfirewall", "firewall", "show", "rule", f"name={SERVICE_NAME}"],
-                    capture_output=True, text=True, errors="replace"
-                )
-                log(r_show.stdout)
                 return True
 
-            log("\n=== Fallback netsh ===")
-            subprocess.run(
-                [netsh, "advfirewall", "firewall", "delete", "rule", f"name={SERVICE_NAME}"],
-                capture_output=True
-            )
+            subprocess.run([netsh, "advfirewall", "firewall", "delete", "rule",
+                            f"name={SERVICE_NAME}"], capture_output=True)
             r_netsh = subprocess.run([
                 netsh, "advfirewall", "firewall", "add", "rule",
                 f"name={SERVICE_NAME}", "dir=in", "action=allow",
                 "protocol=TCP", f"localport={porta}", "profile=any",
             ], capture_output=True, text=True, errors="replace")
-            lfw.write(r_netsh.stdout); lfw.write(r_netsh.stderr)
-            log(f"netsh exit code: {r_netsh.returncode}")
-
+            log(r_netsh.stdout)
             r_show = subprocess.run(
                 [netsh, "advfirewall", "firewall", "show", "rule", f"name={SERVICE_NAME}"],
-                capture_output=True, text=True, errors="replace"
-            )
-            log(r_show.stdout)
-            return "Nenhuma regra" not in r_show.stdout and SERVICE_NAME in r_show.stdout
+                capture_output=True, text=True, errors="replace")
+            return SERVICE_NAME in r_show.stdout
 
     def _test_firebird(self) -> str | None:
         try:
@@ -537,14 +520,10 @@ class App(ctk.CTk):
 
     def _test_porta(self) -> str | None:
         import socket
-        porta = 8000
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1)
-            if s.connect_ex(("127.0.0.1", porta)) == 0:
-                return (
-                    f"A porta {porta} já está em uso por outro processo.\n"
-                    "Encerre o processo que ocupa essa porta ou escolha outra porta."
-                )
+            if s.connect_ex(("127.0.0.1", 8000)) == 0:
+                return "A porta 8000 já está em uso. Encerre o processo que a ocupa."
         return None
 
     def _install_worker(self):
@@ -552,21 +531,16 @@ class App(ctk.CTk):
         porta = "8000"
         try:
             import time as _time
-
             self._set_status("Criando pastas...")
             os.makedirs(install_dir, exist_ok=True)
             os.makedirs(os.path.join(install_dir, "logs"), exist_ok=True)
 
-            self._set_status("Testando conexão com o banco de dados Firebird...")
+            self._set_status("Testando banco de dados Firebird...")
             fb_erro = self._test_firebird()
             if fb_erro:
-                self._set_status(f"Falha ao conectar ao banco: {fb_erro}", RED_C)
-                if not messagebox.askyesno(
-                    "Aviso: banco inacessível",
-                    f"Não foi possível conectar ao banco Firebird:\n\n{fb_erro}\n\n"
-                    "Verifique o caminho, host e credenciais.\n\n"
-                    "Deseja instalar mesmo assim? O serviço pode não iniciar corretamente.",
-                ):
+                self._set_status(f"Falha no banco: {fb_erro}", RED_C)
+                if not messagebox.askyesno("Aviso: banco inacessível",
+                    f"Não foi possível conectar ao banco:\n\n{fb_erro}\n\nInstalar mesmo assim?"):
                     return
 
             self._set_status("Verificando NSSM...")
@@ -574,7 +548,7 @@ class App(ctk.CTk):
             if not nssm:
                 return
 
-            self._set_status("Parando serviço anterior (se houver)...")
+            self._set_status("Parando serviço anterior...")
             subprocess.run([nssm, "stop",   SERVICE_NAME], capture_output=True)
             subprocess.run([nssm, "remove", SERVICE_NAME, "confirm"], capture_output=True)
             _time.sleep(1)
@@ -586,14 +560,11 @@ class App(ctk.CTk):
                 messagebox.showerror("Porta em uso", porta_erro)
                 return
 
-            self._set_status("Configurando exclusão no antivírus...")
             sysroot_pre = os.environ.get("SystemRoot", r"C:\Windows")
-            ps_exe_pre  = os.path.join(sysroot_pre, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-            subprocess.run(
-                [ps_exe_pre, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                 "-Command", f"Add-MpPreference -ExclusionPath '{install_dir}' -ErrorAction SilentlyContinue"],
-                capture_output=True
-            )
+            ps_pre = os.path.join(sysroot_pre, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+            subprocess.run([ps_pre, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                "-Command", f"Add-MpPreference -ExclusionPath '{install_dir}' -ErrorAction SilentlyContinue"],
+                capture_output=True)
 
             self._set_status("Copiando arquivos do servidor...")
             server_target = self._copy_server_files(install_dir)
@@ -602,20 +573,19 @@ class App(ctk.CTk):
             self._write_env(install_dir)
 
             self._set_status("Registrando serviço Windows...")
-            is_exe = server_target.endswith(".exe")
-            if is_exe:
+            if server_target.endswith(".exe"):
                 subprocess.run([nssm, "install", SERVICE_NAME, server_target], check=True)
             else:
                 python_exe = shutil.which("python") or shutil.which("python3") or sys.executable
                 subprocess.run([nssm, "install", SERVICE_NAME, python_exe, server_target], check=True)
 
             for key, val in [
-                ("AppDirectory", install_dir),
-                ("DisplayName",  SERVICE_DISPLAY),
-                ("Description",  "API de inventário Invec"),
-                ("Start",        "SERVICE_AUTO_START"),
-                ("AppStdout",    os.path.join(install_dir, "logs", "servico.log")),
-                ("AppStderr",    os.path.join(install_dir, "logs", "erro.log")),
+                ("AppDirectory",   install_dir),
+                ("DisplayName",    SERVICE_DISPLAY),
+                ("Description",    "API de inventário Invec"),
+                ("Start",          "SERVICE_AUTO_START"),
+                ("AppStdout",      os.path.join(install_dir, "logs", "servico.log")),
+                ("AppStderr",      os.path.join(install_dir, "logs", "erro.log")),
                 ("AppRotateFiles", "1"),
                 ("AppRotateBytes", "10485760"),
             ]:
@@ -625,7 +595,7 @@ class App(ctk.CTk):
             subprocess.run([nssm, "start", SERVICE_NAME])
 
             self._set_status("Aguardando servidor iniciar...")
-            import urllib.request, urllib.error
+            import urllib.request
             api_ok = False
             for _ in range(20):
                 _time.sleep(1)
@@ -640,28 +610,17 @@ class App(ctk.CTk):
             log_fw = os.path.join(install_dir, "logs", "firewall.log")
             fw_ok = self._configure_firewall(porta, log_fw)
             if not fw_ok:
-                messagebox.showwarning(
-                    "Aviso: regra de firewall",
-                    f"O serviço foi instalado e está rodando normalmente,\n"
-                    f"mas não foi possível criar a regra de firewall automaticamente.\n\n"
-                    f"Execute no PowerShell como Administrador:\n\n"
+                messagebox.showwarning("Aviso: firewall",
+                    f"Serviço rodando, mas regra de firewall não criada.\n\n"
+                    f"Execute no PowerShell como Admin:\n"
                     f"New-NetFirewallRule -DisplayName '{SERVICE_NAME}' "
-                    f"-Direction Inbound -Action Allow "
-                    f"-Protocol TCP -LocalPort {porta} -Profile Any\n\n"
-                    f"Detalhes em: {log_fw}"
-                )
+                    f"-Direction Inbound -Action Allow -Protocol TCP -LocalPort {porta} -Profile Any")
 
             if api_ok:
-                self._set_status(
-                    f"● Instalado com sucesso! Serviço rodando em http://localhost:{porta}", GREEN
-                )
-                if messagebox.askyesno(
-                    "Instalação concluída",
-                    f"Serviço instalado e iniciado com sucesso!\n\n"
-                    f"API disponível em: http://localhost:{porta}\n"
-                    f"Pasta de instalação: {install_dir}\n\n"
-                    f"Deseja fechar o instalador?"
-                ):
+                self._set_status(f"● Instalado! Serviço rodando em http://localhost:{porta}", GREEN)
+                if messagebox.askyesno("Instalação concluída",
+                    f"Serviço instalado com sucesso!\n\nAPI: http://localhost:{porta}\n"
+                    f"Pasta: {install_dir}\n\nFechar o instalador?"):
                     self.after(0, self.destroy)
             else:
                 log_erro = os.path.join(install_dir, "logs", "erro.log")
@@ -670,26 +629,17 @@ class App(ctk.CTk):
                     try:
                         with open(log_erro, encoding="utf-8", errors="replace") as lf:
                             linhas = lf.readlines()
-                            trecho = "".join(linhas[-20:]) if linhas else ""
+                            trecho = "".join(linhas[-20:])
                     except Exception:
                         pass
-                self._set_status(
-                    "Serviço registrado, mas API não respondeu. Verifique os logs.", AMBER
-                )
-                messagebox.showwarning(
-                    "Atenção: servidor não respondeu",
-                    f"O serviço foi registrado mas a API não respondeu em http://localhost:{porta}/ping\n\n"
-                    f"Possíveis causas:\n"
-                    f"  • Antivírus bloqueou o InvecServidor.exe\n"
-                    f"  • Banco de dados inacessível\n"
-                    f"  • Licença inválida\n"
-                    f"  • Erro nas migrations\n\n"
+                self._set_status("Serviço registrado mas API não respondeu. Verifique os logs.", AMBER)
+                messagebox.showwarning("Atenção",
+                    f"API não respondeu em http://localhost:{porta}/ping\n\n"
                     f"Verifique: {log_erro}"
-                    + (f"\n\nÚltimas linhas do log:\n{trecho}" if trecho else "")
-                )
+                    + (f"\n\n{trecho}" if trecho else ""))
 
         except subprocess.CalledProcessError as e:
-            self._set_status(f"Erro na instalação: {e}", RED_C)
+            self._set_status(f"Erro: {e}", RED_C)
             messagebox.showerror("Erro", str(e))
         except Exception as e:
             self._set_status(f"Erro inesperado: {e}", RED_C)
@@ -719,11 +669,9 @@ class App(ctk.CTk):
         if not is_admin():
             messagebox.showerror("Permissão necessária", "Execute como Administrador.")
             return
-        if not messagebox.askyesno(
-            "Desinstalar",
+        if not messagebox.askyesno("Desinstalar",
             f"Remover o serviço '{SERVICE_NAME}'?\n\n"
-            "Os arquivos de instalação e o banco de dados NÃO serão apagados.",
-        ):
+            "Os arquivos e banco de dados NÃO serão apagados."):
             return
         install_dir = self.v_install.get()
         nssm = os.path.join(install_dir, "nssm.exe")
@@ -734,18 +682,14 @@ class App(ctk.CTk):
             subprocess.run(["sc", "stop",   SERVICE_NAME], capture_output=True)
             subprocess.run(["sc", "delete", SERVICE_NAME], capture_output=True)
         sysroot = os.environ.get("SystemRoot", r"C:\Windows")
-        netsh   = os.path.join(sysroot, "System32", "netsh.exe")
-        ps_exe  = os.path.join(sysroot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-        subprocess.run(
-            [ps_exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-             "-Command", f"Remove-NetFirewallRule -DisplayName '{SERVICE_NAME}' -ErrorAction SilentlyContinue"],
-            capture_output=True
-        )
-        subprocess.run(
-            [netsh, "advfirewall", "firewall", "delete", "rule", f"name={SERVICE_NAME}"],
-            capture_output=True
-        )
-        self._set_status("Serviço removido com sucesso.")
+        netsh  = os.path.join(sysroot, "System32", "netsh.exe")
+        ps_exe = os.path.join(sysroot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        subprocess.run([ps_exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-Command", f"Remove-NetFirewallRule -DisplayName '{SERVICE_NAME}' -ErrorAction SilentlyContinue"],
+            capture_output=True)
+        subprocess.run([netsh, "advfirewall", "firewall", "delete", "rule",
+                        f"name={SERVICE_NAME}"], capture_output=True)
+        self._set_status("Serviço removido.")
         messagebox.showinfo("Desinstalado", "Serviço removido com sucesso.")
 
     def run(self):

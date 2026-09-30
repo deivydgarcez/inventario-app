@@ -1,4 +1,5 @@
 import time
+import threading
 import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.database import get_connection, fetchall_as_dict, fetchone_as_dict
@@ -87,37 +88,63 @@ def _pode_gerir(user: dict) -> bool:
     return _is_mi(user) or user.get("mobile_admin") == 1
 
 
-def _verificar_dispositivo(device_id: str, device_name: str | None = None):
+_device_lock = threading.Lock()
+
+
+def _verificar_dispositivo(device_id: str, device_name: str | None = None, usuario: str = ""):
     from app.licenca import get_max_dispositivos
+    from app.notificacoes import (
+        notificar_dispositivo_bloqueado,
+        notificar_dispositivo_novo,
+    )
     max_disp = get_max_dispositivos()
-    with get_connection() as con:
-        cur = con.cursor()
-        cur.execute(
-            "SELECT ID FROM DISPOSITIVOS_AUTORIZADOS WHERE DEVICE_ID = ?",
-            (device_id,)
-        )
-        if cur.fetchone():
+    nome = device_name or "Dispositivo desconhecido"
+    with _device_lock:
+        with get_connection() as con:
+            cur = con.cursor()
             cur.execute(
-                "UPDATE DISPOSITIVOS_AUTORIZADOS SET ULTIMO_ACESSO = CURRENT_TIMESTAMP "
-                "WHERE DEVICE_ID = ?",
+                "SELECT ID FROM DISPOSITIVOS_AUTORIZADOS WHERE DEVICE_ID = ?",
                 (device_id,)
             )
-            return
-        if max_disp is not None:
-            cur.execute("SELECT COUNT(*) FROM DISPOSITIVOS_AUTORIZADOS")
-            count = cur.fetchone()[0]
-            if count >= max_disp:
-                raise HTTPException(
-                    status_code=403,
-                    detail=(
-                        f"Limite de licença atingido ({max_disp} dispositivo(s) autorizado(s)). "
-                        "Contate o administrador para liberar um slot."
-                    ),
+            if cur.fetchone():
+                cur.execute(
+                    "UPDATE DISPOSITIVOS_AUTORIZADOS SET ULTIMO_ACESSO = CURRENT_TIMESTAMP "
+                    "WHERE DEVICE_ID = ?",
+                    (device_id,)
                 )
-        cur.execute(
-            "INSERT INTO DISPOSITIVOS_AUTORIZADOS (DEVICE_ID, NOME_DISPOSITIVO) VALUES (?, ?)",
-            (device_id, device_name or "Dispositivo desconhecido"),
-        )
+                return
+            if max_disp is not None:
+                cur.execute("SELECT COUNT(*) FROM DISPOSITIVOS_AUTORIZADOS")
+                count = cur.fetchone()[0]
+                if count >= max_disp:
+                    notificar_dispositivo_bloqueado(device_id, nome, max_disp, usuario)
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            f"Limite de licença atingido ({max_disp} dispositivo(s) autorizado(s)). "
+                            "Contate o administrador para liberar um slot."
+                        ),
+                    )
+            try:
+                cur.execute(
+                    "INSERT INTO DISPOSITIVOS_AUTORIZADOS (DEVICE_ID, NOME_DISPOSITIVO) VALUES (?, ?)",
+                    (device_id, nome),
+                )
+                notificar_dispositivo_novo(device_id, nome, usuario)
+            except Exception:
+                # Constraint UNIQUE violada: request simultâneo já registrou este device_id.
+                cur2 = con.cursor()
+                cur2.execute(
+                    "SELECT ID FROM DISPOSITIVOS_AUTORIZADOS WHERE DEVICE_ID = ?", (device_id,)
+                )
+                if cur2.fetchone():
+                    cur2.execute(
+                        "UPDATE DISPOSITIVOS_AUTORIZADOS SET ULTIMO_ACESSO = CURRENT_TIMESTAMP "
+                        "WHERE DEVICE_ID = ?",
+                        (device_id,),
+                    )
+                else:
+                    raise
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -244,7 +271,7 @@ def login(body: LoginRequest, request: Request):
         pass
 
     if body.device_id:
-        _verificar_dispositivo(body.device_id, body.device_name)
+        _verificar_dispositivo(body.device_id, body.device_name, body.login)
 
     is_mi = user["login"].upper() == MI_LOGIN
     mobile_admin = 1 if is_mi else (user.get("mobile_admin") or 0)

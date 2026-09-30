@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
 import android.view.ViewAnimationUtils
 import android.view.ViewGroup
@@ -142,7 +143,8 @@ class LoginActivity : AppCompatActivity() {
         }
 
         setLoading(true)
-        val deviceId = getOrCreateDeviceId()
+        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+            ?: "unknown-device"
         val deviceName = android.os.Build.MODEL
         lifecycleScope.launch {
             try {
@@ -185,16 +187,6 @@ class LoginActivity : AppCompatActivity() {
                 setLoading(false)
             }
         }
-    }
-
-    private fun getOrCreateDeviceId(): String {
-        val prefs = getSharedPreferences("invec_device", android.content.Context.MODE_PRIVATE)
-        var id = prefs.getString("device_uuid", null)
-        if (id == null) {
-            id = java.util.UUID.randomUUID().toString()
-            prefs.edit().putString("device_uuid", id).apply()
-        }
-        return id
     }
 
     private fun setLoading(loading: Boolean) {

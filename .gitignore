@@ -33,3 +33,8 @@ __pycache__/
 
 # Arquivos temporários de desenvolvimento
 api/query
+
+# Credenciais internas Pontual — nunca versionar
+api/pontual_secrets.py
+api/.env
+api/licenca_privada.pem
