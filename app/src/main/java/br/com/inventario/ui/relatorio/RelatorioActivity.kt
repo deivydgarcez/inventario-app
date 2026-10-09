@@ -32,6 +32,7 @@ import br.com.inventario.ui.historico.HistoricoActivity
 import br.com.inventario.ui.recontagem.RecontagemActivity
 import br.com.inventario.util.ServerMonitor
 import br.com.inventario.util.SessionManager
+import br.com.inventario.util.GlassDialog
 import br.com.inventario.util.SyncManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -143,19 +144,17 @@ class RelatorioActivity : TimeoutActivity() {
     }
 
     private fun perguntarConsiderarEntrega() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Você bipou os itens separados para entrega?")
-            .setMessage("Há produtos no estoque que já estão separados para entregar a clientes.\n\nSe você bipou tudo (inclusive esses itens), escolha \"Sim, bipei tudo\".\nSe você deixou esses itens de fora e contou só o disponível para venda, escolha \"Não, só o disponível\".")
-            .setCancelable(false)
-            .setPositiveButton("Sim, bipei tudo") { _, _ ->
-                session.saveConsiderarEntrega(true)
-                carregarRelatorio()
-            }
-            .setNegativeButton("Não, só o disponível") { _, _ ->
-                session.saveConsiderarEntrega(false)
-                carregarRelatorio()
-            }
-            .show()
+        GlassDialog.show(
+            context = this,
+            title = "Você bipou os itens separados para entrega?",
+            message = "Há produtos no estoque que já estão separados para entregar a clientes.\n\nSe você bipou tudo (inclusive esses itens), escolha \"Sim, bipei tudo\".\nSe você deixou esses itens de fora e contou só o disponível para venda, escolha \"Não, só o disponível\".",
+            positiveText = "Sim, bipei tudo",
+            negativeText = "Não, só o disponível",
+            cancelable = false,
+            equalButtons = true,
+            onPositive = { session.saveConsiderarEntrega(true); carregarRelatorio() },
+            onNegative = { session.saveConsiderarEntrega(false); carregarRelatorio() }
+        )
     }
 
     private fun carregarRelatorio(tentativa: Int = 0) {

@@ -31,6 +31,7 @@ import br.com.inventario.data.model.BipagemRequest
 import br.com.inventario.data.model.EditarBipagemRequest
 import br.com.inventario.data.model.Produto
 import br.com.inventario.databinding.ActivityScannerBinding
+import br.com.inventario.util.GlassDialog
 import br.com.inventario.ui.base.TimeoutActivity
 import br.com.inventario.util.ServerMonitor
 import br.com.inventario.util.SessionManager
@@ -167,14 +168,14 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     private fun mostrarSeletorModo() {
-        AlertDialog.Builder(this)
-            .setTitle("Modo de leitura")
-            .setItems(arrayOf("Câmera do celular", "Leitor Bluetooth")) { _, which ->
-                if (which == 0) aplicarModo(ScanMode.CAMERA)
-                else aplicarModo(ScanMode.BLUETOOTH)
-            }
-            .setCancelable(true)
-            .show()
+        GlassDialog.list(
+            context = this,
+            title = "Modo de leitura",
+            items = arrayOf("Câmera do celular", "Leitor Bluetooth")
+        ) { which ->
+            if (which == 0) aplicarModo(ScanMode.CAMERA)
+            else aplicarModo(ScanMode.BLUETOOTH)
+        }
     }
 
     private fun iniciarScan() {
@@ -223,93 +224,79 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     private fun digitarManualmente() {
-        AlertDialog.Builder(this)
-            .setTitle("Buscar produto")
-            .setItems(arrayOf(
+        GlassDialog.list(
+            context = this,
+            title = "Buscar produto",
+            items = arrayOf(
                 "Por código de barras",
                 "Por código do produto (nº)",
                 "Por nome / descrição",
-            )) { _, which ->
-                when (which) {
-                    0 -> digitarCodigoBarras()
-                    1 -> digitarCodigoProduto()
-                    2 -> digitarNomeProduto()
-                }
+            ),
+            negativeText = "Cancelar"
+        ) { which ->
+            when (which) {
+                0 -> digitarCodigoBarras()
+                1 -> digitarCodigoProduto()
+                2 -> digitarNomeProduto()
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
     }
 
     private fun digitarCodigoBarras() {
-        val input = EditText(this).apply {
-            hint = "Digite o código de barras"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            setPadding(48, 32, 48, 32)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Código de barras")
-            .setView(input)
-            .setPositiveButton("Buscar") { _, _ ->
-                val codigo = input.text.toString().trim()
-                if (codigo.length >= 3 && !processando) {
-                    processando = true
-                    mostrarBuscando(codigo)
-                    buscarProduto(codigo)
-                } else if (codigo.isNotEmpty() && codigo.length < 3) {
-                    Toast.makeText(this, "Código muito curto", Toast.LENGTH_SHORT).show()
-                }
+        GlassDialog.input(
+            context = this,
+            title = "Código de barras",
+            hint = "Digite o código de barras",
+            positiveText = "Buscar"
+        ) { codigo ->
+            if (codigo.length >= 3 && !processando) {
+                processando = true
+                mostrarBuscando(codigo)
+                buscarProduto(codigo)
+            } else if (codigo.isNotEmpty() && codigo.length < 3) {
+                Toast.makeText(this, "Código muito curto", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
     }
 
     private fun digitarCodigoProduto() {
-        val input = EditText(this).apply {
-            hint = "Código do produto (número)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            setPadding(48, 32, 48, 32)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Código do produto")
-            .setView(input)
-            .setPositiveButton("Buscar") { _, _ ->
-                val codigo = input.text.toString().trim().toIntOrNull()
-                if (codigo != null && !processando) {
-                    processando = true
-                    binding.tvStatus.text = "Buscando produto #$codigo..."
-                    binding.tvStatus.visibility = View.VISIBLE
-                    buscarPorCdproduto(codigo)
-                } else if (codigo == null) {
-                    Toast.makeText(this, "Informe um número válido", Toast.LENGTH_SHORT).show()
-                }
+        GlassDialog.input(
+            context = this,
+            title = "Código do produto",
+            hint = "Código do produto (número)",
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER,
+            positiveText = "Buscar"
+        ) { raw ->
+            val codigo = raw.toIntOrNull()
+            if (codigo != null && !processando) {
+                processando = true
+                binding.tvStatus.text = "Buscando produto #$codigo..."
+                binding.tvStatus.visibility = View.VISIBLE
+                buscarPorCdproduto(codigo)
+            } else if (codigo == null) {
+                Toast.makeText(this, "Informe um número válido", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
     }
 
     private fun digitarNomeProduto() {
-        val input = EditText(this).apply {
-            hint = "Nome ou parte do nome"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            setPadding(48, 32, 48, 32)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Buscar por nome")
-            .setView(input)
-            .setPositiveButton("Buscar") { _, _ ->
-                val query = input.text.toString().trim()
-                if (query.length >= 2) {
-                    if (processando) return@setPositiveButton
-                    processando = true
-                    binding.tvStatus.text = "Buscando '$query'..."
-                    binding.tvStatus.visibility = View.VISIBLE
-                    buscarPorNome(query)
-                } else {
-                    Toast.makeText(this, "Digite pelo menos 2 caracteres", Toast.LENGTH_SHORT).show()
-                }
+        GlassDialog.input(
+            context = this,
+            title = "Buscar por nome",
+            hint = "Nome ou parte do nome",
+            positiveText = "Buscar"
+        ) { query ->
+            if (query.length >= 2) {
+                if (processando) return@input
+                processando = true
+                binding.tvStatus.text = "Buscando '$query'..."
+                binding.tvStatus.visibility = View.VISIBLE
+                buscarPorNome(query)
+            } else {
+                Toast.makeText(this, "Digite pelo menos 2 caracteres", Toast.LENGTH_SHORT).show()
+                resetarEstado()
             }
-            .setNegativeButton("Cancelar") { _, _ -> resetarEstado() }
-            .show()
+        }
     }
 
     private fun buscarPorCdproduto(cdproduto: Int) {
@@ -406,14 +393,16 @@ class ScannerActivity : TimeoutActivity() {
                 }
                 else -> {
                     val nomes = resultados.map { "${it.cdproduto} — ${it.produto}" }.toTypedArray()
-                    AlertDialog.Builder(this@ScannerActivity)
-                        .setTitle("Selecione o produto")
-                        .setItems(nomes) { _, idx ->
-                            processando = true
-                            registrarBipagem(resultados[idx], sessionId)
-                        }
-                        .setNegativeButton("Cancelar") { _, _ -> resetarEstado() }
-                        .show()
+                    GlassDialog.list(
+                        context = this@ScannerActivity,
+                        title = "Selecione o produto",
+                        items = nomes,
+                        negativeText = "Cancelar",
+                        onNegative = { resetarEstado() }
+                    ) { idx ->
+                        processando = true
+                        registrarBipagem(resultados[idx], sessionId)
+                    }
                 }
             }
         }
@@ -710,20 +699,21 @@ class ScannerActivity : TimeoutActivity() {
     }
 
     private fun mostrarAlertaQuantidade(nomeProduto: String, alerta: String) {
-        AlertDialog.Builder(this)
-            .setTitle("Quantidade suspeita")
-            .setMessage("$nomeProduto\n\n$alerta")
-            .setPositiveButton("Entendi", null)
-            .show()
+        GlassDialog.show(
+            context = this,
+            title = "Quantidade suspeita",
+            message = "$nomeProduto\n\n$alerta",
+            positiveText = "Entendi"
+        )
     }
 
     private fun mostrarProdutoInativo() {
         tocarSomErro()
-        AlertDialog.Builder(this)
-            .setTitle("Produto Inativo")
-            .setMessage("Este produto está inativo no sistema e não pode ser bipado.")
-            .setPositiveButton("OK", null)
-            .show()
+        GlassDialog.show(
+            context = this,
+            title = "Produto Inativo",
+            message = "Este produto está inativo no sistema e não pode ser bipado."
+        )
     }
 
     private fun tocarSomSucesso() {

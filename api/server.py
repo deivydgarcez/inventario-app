@@ -22,7 +22,19 @@ load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
 # Diretório de dados (relatórios, logs) = pasta do executável, a menos que overrideado no .env
 os.environ.setdefault("INVEC_DATA_DIR", BASE_DIR)
 
+from app.version import APP_VERSION
 from app.licenca import validar_licenca
+
+print(f"[Invec] Versao   : {APP_VERSION}")
+
+# Garante que server_version.txt existe e está atualizado
+_version_file = os.path.join(BASE_DIR, "server_version.txt")
+try:
+    with open(_version_file, "w", encoding="utf-8") as _fh:
+        _fh.write(APP_VERSION)
+except OSError:
+    pass
+
 try:
     info = validar_licenca()
     print(f"[Invec] Licenca valida")

@@ -7,6 +7,7 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
+import br.com.inventario.util.GlassDialog
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import br.com.inventario.R
@@ -105,15 +106,17 @@ class UsuariosActivity : TimeoutActivity() {
 
     private fun toggleAdmin(usuario: UsuarioMobile) {
         val acao = if (usuario.mobileAdmin == 1) "Remover acesso admin de" else "Dar acesso admin para"
-        AlertDialog.Builder(this)
-            .setTitle("$acao ${usuario.login}?")
-            .setMessage(
-                if (usuario.mobileAdmin == 1)
-                    "${usuario.login} não poderá mais gerenciar usuários mobile."
-                else
-                    "${usuario.login} poderá ativar senhas e gerenciar usuários mobile, mas não poderá alterar o usuário MI."
-            )
-            .setPositiveButton("Confirmar") { _, _ ->
+        val msg = if (usuario.mobileAdmin == 1)
+            "${usuario.login} não poderá mais gerenciar usuários mobile."
+        else
+            "${usuario.login} poderá ativar senhas e gerenciar usuários mobile, mas não poderá alterar o usuário MI."
+        GlassDialog.show(
+            context = this,
+            title = "$acao ${usuario.login}?",
+            message = msg,
+            positiveText = "Confirmar",
+            negativeText = "Cancelar",
+            onPositive = {
                 lifecycleScope.launch {
                     try {
                         val api = RetrofitClient.build(session)
@@ -129,8 +132,7 @@ class UsuariosActivity : TimeoutActivity() {
                     }
                 }
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        )
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

@@ -32,6 +32,7 @@
     <color name="sectionHeader">#95A5A6</color>
 
     <!-- Glassmorphism -->
+    <color name="glassDividerColor">#22000000</color>
     <color name="gradientStart">#FFEEE6</color>
     <color name="gradientEnd">#EAF4FF</color>
     <color name="glassCardFill">#CCFFFFFF</color>

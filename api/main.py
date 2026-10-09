@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, depositos, produtos, inventario, operadores, sessao, dispositivos
 from app.migrations import run_migrations
 from app.licenca import validar_licenca
+from app.version import APP_VERSION
 
 
 @asynccontextmanager
@@ -43,6 +44,11 @@ app.include_router(dispositivos.router)
 @app.get("/", tags=["Health"])
 def health():
     return {"status": "ok"}
+
+
+@app.get("/versao", tags=["Health"])
+def versao():
+    return {"versao": APP_VERSION}
 
 
 @app.get("/ping", tags=["Health"])

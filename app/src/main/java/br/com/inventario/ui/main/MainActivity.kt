@@ -10,8 +10,9 @@ import android.view.ViewAnimationUtils
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
+
+import br.com.inventario.BuildConfig
 import br.com.inventario.R
 import androidx.lifecycle.lifecycleScope
 import br.com.inventario.data.api.RetrofitClient
@@ -25,10 +26,14 @@ import br.com.inventario.ui.base.TimeoutActivity
 import br.com.inventario.ui.relatorio.RelatorioActivity
 import br.com.inventario.ui.scanner.ScannerActivity
 import br.com.inventario.ui.usuarios.UsuariosActivity
+import br.com.inventario.util.GlassDialog
 import br.com.inventario.util.ServerMonitor
 import br.com.inventario.util.SessionManager
+import br.com.inventario.util.UpdateChecker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import android.widget.EditText
+import kotlinx.coroutines.withContext
 
 class MainActivity : TimeoutActivity() {
 
@@ -36,6 +41,10 @@ class MainActivity : TimeoutActivity() {
     private lateinit var session: SessionManager
     private lateinit var db: InvecDatabase
     private var depositos: List<Deposito> = emptyList()
+
+    companion object {
+        private var updateCheckDone = false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +56,7 @@ class MainActivity : TimeoutActivity() {
 
         ServerMonitor.startOrKeep(session, lifecycleScope)
 
+        binding.tvVersion.text = "v${BuildConfig.VERSION_NAME}"
         atualizarHeader()
         atualizarIconeDarkMode()
 
@@ -62,6 +72,8 @@ class MainActivity : TimeoutActivity() {
         }
         binding.btnSair.setOnClickListener { sair() }
         binding.btnConfigurarServidor.setOnClickListener { configurarServidor() }
+
+        verificarAtualizacao()
     }
 
     override fun onResume() {
@@ -120,39 +132,88 @@ class MainActivity : TimeoutActivity() {
                 "Depósito: $dep · $qtdeCatalogo produtos em cache"
             else
                 "Depósito: $dep · catálogo não baixado"
+            binding.tvDeposito.setTextColor(getColor(R.color.textSecondary))
         } else {
-            binding.tvDeposito.text = "Nenhum depósito selecionado"
+            binding.tvDeposito.text = "⚠ Nenhum depósito selecionado"
+            binding.tvDeposito.setTextColor(getColor(R.color.atomicOrange))
         }
-        binding.btnBipar.isEnabled = dep != null
+        binding.btnBipar.isEnabled = true
         binding.btnRelatorio.isEnabled = dep != null
         binding.btnUsuarios.visibility = if (session.canManageUsers()) View.VISIBLE else View.GONE
     }
 
-    private fun configurarServidor() {
-        val urlAtual = session.getServerUrl()
-        val input = EditText(this).apply {
-            hint = "http://192.168.0.1:8000/"
-            setText(urlAtual)
-            setPadding(48, 32, 48, 32)
+    private fun verificarAtualizacao() {
+        if (updateCheckDone) return
+        updateCheckDone = true
+
+        // Limpa APK de update anterior que possa ter ficado no cache
+        java.io.File(cacheDir, "invec_update.apk").delete()
+
+        lifecycleScope.launch {
+            delay(800)
+            val info = withContext(Dispatchers.IO) { UpdateChecker.verificar() } ?: return@launch
+
+            GlassDialog.show(
+                context = this@MainActivity,
+                title = "Nova versão disponível  v${info.versao}",
+                message = info.changelog,
+                positiveText = "Atualizar",
+                negativeText = "Agora não",
+                cancelable = false,
+                onPositive = { baixarEInstalar(info.apkApiUrl) }
+            )
         }
-        AlertDialog.Builder(this)
-            .setTitle("Endereço do servidor")
-            .setMessage("Digite o IP e porta do servidor.\nExemplo: http://192.168.0.31:8000/")
-            .setView(input)
-            .setPositiveButton("Salvar") { _, _ ->
-                var url = input.text.toString().trim()
-                if (url.isNotEmpty()) {
-                    if (!url.startsWith("http")) url = "http://$url"
-                    if (!url.endsWith("/")) url = "$url/"
-                    session.saveServerUrl(url)
-                    RetrofitClient.reset()
-                    ServerMonitor.reset()
-                    ServerMonitor.startOrKeep(session, lifecycleScope)
-                    Toast.makeText(this, "Servidor configurado: $url", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun baixarEInstalar(apkApiUrl: String) {
+        val (loadingDialog, tvMsg) = GlassDialog.showLoading(
+            this,
+            "Baixando atualização",
+            "Iniciando download..."
+        )
+
+        lifecycleScope.launch {
+            val apkFile = UpdateChecker.baixar(this@MainActivity, apkApiUrl) { progresso ->
+                runOnUiThread { tvMsg.text = "Baixando... $progresso%" }
+            }
+
+            if (!isFinishing && !isDestroyed) loadingDialog.dismiss()
+
+            if (apkFile != null) {
+                UpdateChecker.instalar(this@MainActivity, apkFile)
+            } else {
+                if (!isFinishing && !isDestroyed) {
+                    GlassDialog.show(
+                        context = this@MainActivity,
+                        title = "Falha no download",
+                        message = "Não foi possível baixar a atualização. Tente novamente mais tarde.",
+                        positiveText = "OK"
+                    )
                 }
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
+    }
+
+    private fun configurarServidor() {
+        GlassDialog.input(
+            context = this,
+            title = "Endereço do servidor",
+            hint = "http://192.168.0.1:8000/",
+            message = "Digite o IP e porta do servidor.\nExemplo: http://192.168.0.31:8000/",
+            prefilled = session.getServerUrl() ?: "",
+            positiveText = "Salvar"
+        ) { raw ->
+            var url = raw
+            if (url.isNotEmpty()) {
+                if (!url.startsWith("http")) url = "http://$url"
+                if (!url.endsWith("/")) url = "$url/"
+                session.saveServerUrl(url)
+                RetrofitClient.reset()
+                ServerMonitor.reset()
+                ServerMonitor.startOrKeep(session, lifecycleScope)
+                Toast.makeText(this, "Servidor configurado: $url", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun carregarDepositos() {
@@ -181,10 +242,11 @@ class MainActivity : TimeoutActivity() {
 
     private fun mostrarDialogDeposito(fromCache: Boolean = false) {
         val nomes = depositos.map { it.deposito }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle(if (fromCache) "Selecionar Depósito (cache)" else "Selecionar Depósito")
-            .setItems(nomes) { _, index -> iniciarDeposito(depositos[index]) }
-            .show()
+        GlassDialog.list(
+            context = this,
+            title = if (fromCache) "Selecionar Depósito (cache)" else "Selecionar Depósito",
+            items = nomes
+        ) { index -> iniciarDeposito(depositos[index]) }
     }
 
     private fun iniciarDeposito(dep: Deposito) {
@@ -200,7 +262,8 @@ class MainActivity : TimeoutActivity() {
         binding.btnSelecionarDeposito.isEnabled = false
         binding.btnBipar.isEnabled = false
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            var qtdCarregada = -1
             try {
                 val api = RetrofitClient.build(session)
                 if (oldSessionId != null && ServerMonitor.isOnline.value) {
@@ -210,24 +273,39 @@ class MainActivity : TimeoutActivity() {
                     try { api.iniciarSessao(IniciarSessaoRequest(sessionId = sessionId, cddeposito = dep.cddeposito, operador = session.getOperador())) } catch (_: Exception) {}
                 }
                 val repo = CatalogoRepository(db, api, session)
-                repo.sincronizarCatalogo(dep.cddeposito) { baixados, total ->
-                    runOnUiThread { binding.tvDeposito.text = "Depósito: ${dep.deposito} · baixando $baixados/$total..." }
+                kotlinx.coroutines.withTimeout(60_000L) {
+                    repo.sincronizarCatalogo(dep.cddeposito) { baixados, total ->
+                        runOnUiThread { binding.tvDeposito.text = "Depósito: ${dep.deposito} · baixando $baixados/$total..." }
+                    }
                 }
+                qtdCarregada = db.catalogo.count(dep.cddeposito)
             } catch (_: Exception) {
-                if (db.catalogo.count(dep.cddeposito) == 0) {
+                val temCache = db.catalogo.count(dep.cddeposito) == 0
+                if (temCache) {
                     runOnUiThread { Toast.makeText(this@MainActivity, "Sem conexão — catálogo não baixado", Toast.LENGTH_LONG).show() }
                 }
             } finally {
                 runOnUiThread {
                     binding.btnSelecionarDeposito.isEnabled = true
                     atualizarHeader()
+                    if (qtdCarregada > 0) {
+                        Toast.makeText(this@MainActivity, "✓ Catálogo carregado — $qtdCarregada produtos", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
     }
 
     private fun abrirScanner() {
-        if (session.getCdDeposito() == -1) { Toast.makeText(this, "Selecione um depósito primeiro", Toast.LENGTH_SHORT).show(); return }
+        if (session.getCdDeposito() == -1) {
+            GlassDialog.show(
+                context = this,
+                title = "Depósito não selecionado",
+                message = "Selecione um depósito antes de iniciar a coleta.",
+                positiveText = "Entendido"
+            )
+            return
+        }
         startActivity(Intent(this, ScannerActivity::class.java))
     }
 
@@ -239,15 +317,18 @@ class MainActivity : TimeoutActivity() {
     private fun sair() {
         val mensagem = if (ServerMonitor.isOnline.value) "Deseja sair da conta?"
         else "Você está sem conexão com o servidor.\n\nSe sair, só conseguirá fazer login novamente quando estiver conectado ao servidor."
-        AlertDialog.Builder(this)
-            .setTitle("Sair da conta")
-            .setMessage(mensagem)
-            .setPositiveButton("Sair") { _, _ -> fazerLogout() }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        GlassDialog.show(
+            context = this,
+            title = "Sair da conta",
+            message = mensagem,
+            positiveText = "Sair",
+            negativeText = "Cancelar",
+            onPositive = { fazerLogout() }
+        )
     }
 
     private fun fazerLogout() {
+        updateCheckDone = false
         val sessionId = session.getSessionId()
         if (sessionId != null && ServerMonitor.isOnline.value) {
             val api = try { RetrofitClient.build(session) } catch (_: Exception) { null }

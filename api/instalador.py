@@ -11,6 +11,7 @@ import ctypes
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
+from PIL import Image
 
 ctk.set_appearance_mode("light")
 
@@ -35,6 +36,27 @@ try:
     from pontual_secrets import PONTUAL_WEBHOOK as _PONTUAL_WEBHOOK
 except ImportError:
     _PONTUAL_WEBHOOK = ""
+
+try:
+    from pontual_secrets import PONTUAL_GITHUB_TOKEN as _PONTUAL_GITHUB_TOKEN
+except ImportError:
+    _PONTUAL_GITHUB_TOKEN = ""
+
+SERVER_VERSION = "1.9.1"
+
+
+def _load_logo(height: int) -> ctk.CTkImage | None:
+    path = resource("logo_pontual.png")
+    if not os.path.exists(path):
+        return None
+    try:
+        img = Image.open(path).convert("RGBA")
+        ratio = img.width / img.height
+        w = int(height * ratio)
+        return ctk.CTkImage(light_image=img, size=(w, height))
+    except Exception:
+        return None
+
 
 SERVICE_NAME    = "InvecAPI"
 SERVICE_DISPLAY = "Invec - API Inventario"
@@ -100,9 +122,17 @@ class App(ctk.CTk):
         self.title("Invec — Instalador do Servidor")
         self.geometry("700x760")
         self.resizable(False, False)
-        self.configure(fg_color="#F5CCB0")   # fallback enquanto canvas carrega
+        self.configure(fg_color="#F5CCB0")
 
-        # ── Canvas de gradiente (camada de fundo) ─────────────────────────────
+        # Ícone da janela
+        try:
+            ico = tk.PhotoImage(file=resource("logo_pontual.png"))
+            self.iconphoto(True, ico)
+            self._ico_ref = ico
+        except Exception:
+            pass
+
+        # Canvas de gradiente
         self._bg = tk.Canvas(self, bd=0, highlightthickness=0)
         self._bg.place(x=0, y=0, relwidth=1, relheight=1)
         self.after(5, self._draw_gradient)
@@ -138,75 +168,67 @@ class App(ctk.CTk):
     # ── Layout ───────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # ── Cabeçalho — toolbar branca com accent laranja (igual ao app) ──────
-        hdr = ctk.CTkFrame(self, fg_color=CARD_BG, corner_radius=0, height=78,
-                           border_width=0)
+        logo_img = _load_logo(46)
+
+        # ── Cabeçalho ─────────────────────────────────────────────────────────
+        hdr = ctk.CTkFrame(self, fg_color=CARD_BG, corner_radius=0, height=78, border_width=0)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
 
-        # Barra vertical laranja à esquerda
-        ctk.CTkFrame(hdr, fg_color=ORANGE, width=6, corner_radius=0).pack(
-            side="left", fill="y")
+        ctk.CTkFrame(hdr, fg_color=ORANGE, width=6, corner_radius=0).pack(side="left", fill="y")
+
+        if logo_img:
+            ctk.CTkLabel(hdr, image=logo_img, text="").pack(side="left", padx=(18, 0), pady=14)
+            ctk.CTkFrame(hdr, fg_color=ENTRY_BOR, width=1, corner_radius=0).pack(
+                side="left", fill="y", padx=(18, 0), pady=12)
 
         hdr_txt = ctk.CTkFrame(hdr, fg_color="transparent")
-        hdr_txt.pack(side="left", fill="both", expand=True, padx=20, pady=10)
-        ctk.CTkLabel(
-            hdr_txt, text="INVEC",
-            font=ctk.CTkFont("Segoe UI", 22, "bold"),
-            text_color=ORANGE, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            hdr_txt, text="Instalador do Servidor",
-            font=ctk.CTkFont("Segoe UI", 11),
-            text_color=TEXT_SEC, anchor="w",
-        ).pack(anchor="w")
+        hdr_txt.pack(side="left", fill="both", expand=True, padx=18, pady=10)
+        ctk.CTkLabel(hdr_txt, text="Instalador do Servidor",
+                     font=ctk.CTkFont("Segoe UI", 16, "bold"),
+                     text_color=TEXT_PRI, anchor="w").pack(anchor="w")
+        ctk.CTkLabel(hdr_txt, text="Invec — Inventário  ·  Porta 8000",
+                     font=ctk.CTkFont("Segoe UI", 11),
+                     text_color=TEXT_SEC, anchor="w").pack(anchor="w")
 
-        ctk.CTkLabel(hdr, text="v1.8.0",
+        ctk.CTkLabel(hdr, text=f"v{SERVER_VERSION}",
                      font=ctk.CTkFont("Segoe UI", 10),
                      text_color=TEXT_SEC).pack(side="right", padx=20)
 
-        # Linha laranja separando header do conteúdo
         ctk.CTkFrame(self, fg_color=ORANGE, height=3, corner_radius=0).pack(fill="x")
 
         # ── Card glass ────────────────────────────────────────────────────────
-        # Wrapper externo: borda branca (aresta do vidro)
-        outer = ctk.CTkFrame(self, fg_color=GLASS_BOR, corner_radius=18,
-                             border_width=0)
+        outer = ctk.CTkFrame(self, fg_color=GLASS_BOR, corner_radius=18, border_width=0)
         outer.pack(fill="both", expand=True, padx=16, pady=14)
 
-        # Inner: fundo tintado azul-gelo (frosted glass sobre o gradiente)
-        card = ctk.CTkFrame(outer, fg_color=CARD_BG, corner_radius=16,
-                            border_width=0)
+        card = ctk.CTkFrame(outer, fg_color=CARD_BG, corner_radius=16, border_width=0)
         card.pack(fill="both", expand=True, padx=3, pady=3)
 
         # ── Helpers locais ────────────────────────────────────────────────────
-        def _section(title: str):
+        def _section(icon: str, title: str):
             wrap = ctk.CTkFrame(card, fg_color="transparent")
             wrap.pack(fill="x", padx=14, pady=(14, 6))
-            ctk.CTkLabel(wrap, text=title,
+            ctk.CTkLabel(wrap, text=f"{icon}  {title}",
                          font=ctk.CTkFont("Segoe UI", 9, "bold"),
                          text_color=ORANGE).pack(side="left")
             ctk.CTkFrame(wrap, fg_color=ENTRY_BOR, height=1,
-                         corner_radius=0).pack(side="left", fill="x",
-                                               expand=True, padx=(10, 0))
+                         corner_radius=0).pack(side="left", fill="x", expand=True, padx=(10, 0))
 
-        def _row(label: str) -> ctk.CTkFrame:
+        def _row(icon: str, label: str) -> ctk.CTkFrame:
             f = ctk.CTkFrame(card, fg_color="transparent")
             f.pack(fill="x", padx=14, pady=(0, 6))
-            ctk.CTkLabel(f, text=label, width=172,
+            ctk.CTkLabel(f, text=f"{icon}  {label}", width=180,
                          font=ctk.CTkFont("Segoe UI", 11),
                          text_color=TEXT_SEC, anchor="w").pack(side="left")
             return f
 
         def _entry(parent, var, state="normal", width=None):
             kw = dict(textvariable=var, fg_color=ENTRY_BG, border_color=ENTRY_BOR,
-                      border_width=1, corner_radius=8, text_color=TEXT_PRI,
-                      state=state)
+                      border_width=1, corner_radius=8, text_color=TEXT_PRI, state=state)
             if width:
                 kw["width"] = width
             e = ctk.CTkEntry(parent, **kw)
-            e.pack(side="left", fill="x" if not width else None,
-                   expand=not bool(width))
+            e.pack(side="left", fill="x" if not width else None, expand=not bool(width))
             return e
 
         def _browse_btn(parent, cmd):
@@ -219,37 +241,35 @@ class App(ctk.CTk):
             ctk.CTkLabel(card, text=text,
                          font=ctk.CTkFont("Segoe UI", 9),
                          text_color=TEXT_SEC, anchor="w").pack(
-                fill="x", padx=(186 + 14, 14), pady=(0, 4))
+                fill="x", padx=(194 + 14, 14), pady=(0, 4))
 
         def _divider():
             ctk.CTkFrame(card, fg_color=ENTRY_BOR, height=1,
                          corner_radius=0).pack(fill="x", padx=14, pady=(10, 0))
 
-        # ─── Instalação ───────────────────────────────────────────────────────
-        _section("INSTALAÇÃO")
-        r = _row("Diretório")
+        # ─── Seções ───────────────────────────────────────────────────────────
+        _section("⚙", "INSTALAÇÃO")
+        r = _row("📂", "Diretório")
         _entry(r, self.v_install)
         _browse_btn(r, self._browse_install_dir)
 
-        # ─── Banco de Dados ───────────────────────────────────────────────────
-        _section("BANCO DE DADOS FIREBIRD")
-        r = _row("Arquivo .FDB")
+        _section("🗄", "BANCO DE DADOS FIREBIRD")
+        r = _row("📄", "Arquivo .FDB")
         _entry(r, self.v_db)
         _browse_btn(r, self._browse_db)
 
-        r = _row("Host")
+        r = _row("🌐", "Host")
         _entry(r, self.v_host)
 
-        r = _row("ID da Empresa")
+        r = _row("🏢", "ID da Empresa")
         _entry(r, self.v_idempresa, width=90)
 
-        # ─── Licença ──────────────────────────────────────────────────────────
-        _section("LICENÇA PONTUAL TECNOLOGIA")
-        r = _row("Chave de Licença")
+        _section("🔐", "LICENÇA PONTUAL TECNOLOGIA")
+        r = _row("🔑", "Chave de Licença")
         _entry(r, self.v_license)
         _hint("O limite de dispositivos móveis está codificado na chave de licença.")
 
-        r = _row("ID desta máquina")
+        r = _row("🖥", "ID desta máquina")
         _entry(r, self.v_machine_id, state="disabled")
         ctk.CTkButton(r, text="Copiar", width=80, height=34,
                       fg_color="transparent", border_width=1,
@@ -270,7 +290,7 @@ class App(ctk.CTk):
         # ─── Botões ───────────────────────────────────────────────────────────
         _divider()
         self.btn_install = ctk.CTkButton(
-            card, text="Instalar / Atualizar",
+            card, text="⬇  Instalar / Atualizar",
             fg_color=ORANGE, hover_color=ORANGE_HOV,
             text_color="white", corner_radius=12,
             height=48, font=ctk.CTkFont("Segoe UI", 13, "bold"),
@@ -280,9 +300,9 @@ class App(ctk.CTk):
         ghost_row = ctk.CTkFrame(card, fg_color="transparent")
         ghost_row.pack(fill="x", padx=14, pady=(0, 14))
         ghost_btns = [
-            ("Reiniciar Serviço", self._on_restart),
-            ("Desinstalar",       self._on_uninstall),
-            ("Fechar",            self.destroy),
+            ("↺  Reiniciar Serviço", self._on_restart),
+            ("✕  Desinstalar",        self._on_uninstall),
+            ("╳  Fechar",             self.destroy),
         ]
         for i, (txt, cmd) in enumerate(ghost_btns):
             ctk.CTkButton(
@@ -378,6 +398,7 @@ class App(ctk.CTk):
                 f"LICENSE_KEY={self.v_license.get()}\n"
                 f"JWT_SECRET={jwt_secret}\n"
                 f"DISCORD_WEBHOOK={_PONTUAL_WEBHOOK}\n"
+                f"GITHUB_TOKEN={_PONTUAL_GITHUB_TOKEN}\n"
             )
         try:
             subprocess.run(
@@ -388,6 +409,38 @@ class App(ctk.CTk):
             )
         except Exception:
             pass
+
+    def _write_update_script(self, install_dir: str):
+        src = resource("update_server.ps1")
+        dest = os.path.join(install_dir, "update_server.ps1")
+        if os.path.exists(src):
+            shutil.copy2(src, dest)
+        # Escreve a versão atual do servidor para referência do updater
+        with open(os.path.join(install_dir, "server_version.txt"), "w", encoding="utf-8") as fh:
+            fh.write(SERVER_VERSION)
+
+    def _criar_agendamento(self, install_dir: str):
+        ps_script = os.path.join(install_dir, "update_server.ps1")
+        if not os.path.exists(ps_script):
+            return
+        sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+        ps_exe  = os.path.join(sysroot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        cmd = (
+            f"$a = New-ScheduledTaskAction -Execute '{ps_exe}' "
+            f"-Argument '-NonInteractive -ExecutionPolicy Bypass -File \"{ps_script}\"'; "
+            f"$t1 = New-ScheduledTaskTrigger -AtStartup; $t1.Delay = 'PT5M'; "
+            f"$t2 = New-ScheduledTaskTrigger -Daily -At '17:00'; "
+            f"$s = New-ScheduledTaskSettingsSet -StartWhenAvailable "
+            f"-RunOnlyIfNetworkAvailable -MultipleInstances IgnoreNew; "
+            f"$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' "
+            f"-LogonType ServiceAccount -RunLevel Highest; "
+            f"Register-ScheduledTask -TaskName 'InvecAutoUpdate' "
+            f"-Action $a -Trigger $t1,$t2 -Settings $s -Principal $p -Force | Out-Null"
+        )
+        subprocess.run(
+            [ps_exe, "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", cmd],
+            capture_output=True, timeout=30,
+        )
 
     def _locate_nssm(self, install_dir: str) -> str | None:
         candidates = [
@@ -572,6 +625,10 @@ class App(ctk.CTk):
             self._set_status("Salvando configuração (.env)...")
             self._write_env(install_dir)
 
+            self._set_status("Configurando atualização automática...")
+            self._write_update_script(install_dir)
+            self._criar_agendamento(install_dir)
+
             self._set_status("Registrando serviço Windows...")
             if server_target.endswith(".exe"):
                 subprocess.run([nssm, "install", SERVICE_NAME, server_target], check=True)
@@ -689,6 +746,13 @@ class App(ctk.CTk):
             capture_output=True)
         subprocess.run([netsh, "advfirewall", "firewall", "delete", "rule",
                         f"name={SERVICE_NAME}"], capture_output=True)
+        sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+        ps_exe  = os.path.join(sysroot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        subprocess.run(
+            [ps_exe, "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-Command", "Unregister-ScheduledTask -TaskName 'InvecAutoUpdate' -Confirm:$false -ErrorAction SilentlyContinue"],
+            capture_output=True,
+        )
         self._set_status("Serviço removido.")
         messagebox.showinfo("Desinstalado", "Serviço removido com sucesso.")
 

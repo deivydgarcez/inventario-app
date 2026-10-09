@@ -16,12 +16,14 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import br.com.inventario.BuildConfig
 import br.com.inventario.R
 import br.com.inventario.data.api.ApiService
 import br.com.inventario.data.api.RetrofitClient
 import br.com.inventario.data.model.LoginRequest
 import br.com.inventario.databinding.ActivityLoginBinding
 import br.com.inventario.ui.main.MainActivity
+import br.com.inventario.util.GlassDialog
 import br.com.inventario.util.SessionManager
 import kotlinx.coroutines.launch
 import retrofit2.Retrofit
@@ -39,6 +41,7 @@ class LoginActivity : AppCompatActivity() {
 
         session = SessionManager(this)
 
+        binding.tvVersion.text = "v${BuildConfig.VERSION_NAME}"
         atualizarIconeDarkMode()
         binding.btnDarkMode.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked != session.isDarkMode()) toggleDarkModeWithReveal(isChecked)
@@ -160,11 +163,11 @@ class LoginActivity : AppCompatActivity() {
                     } catch (_: Exception) {
                         "Acesso negado. Contate o administrador."
                     }
-                    androidx.appcompat.app.AlertDialog.Builder(this@LoginActivity)
-                        .setTitle("Limite de Dispositivos")
-                        .setMessage(detail)
-                        .setPositiveButton("OK", null)
-                        .show()
+                    GlassDialog.show(
+                        context = this@LoginActivity,
+                        title = "Limite de Dispositivos",
+                        message = detail
+                    )
                 } else {
                     val msg = if (response.code() == 401) {
                         "Login ou senha inválidos"

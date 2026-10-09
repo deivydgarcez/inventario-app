@@ -4,9 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -19,6 +17,7 @@ import br.com.inventario.data.model.OperadorRequest
 import br.com.inventario.databinding.ActivityOperadoresBinding
 import br.com.inventario.databinding.ItemOperadorBinding
 import br.com.inventario.ui.base.TimeoutActivity
+import br.com.inventario.util.GlassDialog
 import br.com.inventario.util.SessionManager
 import kotlinx.coroutines.launch
 
@@ -80,41 +79,39 @@ class OperadoresActivity : TimeoutActivity() {
     }
 
     private fun dialogNovoOperador() {
-        val input = EditText(this).apply {
-            hint = "Nome do operador"
-            setPadding(48, 32, 48, 32)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Novo Operador")
-            .setView(input)
-            .setPositiveButton("Adicionar") { _, _ ->
-                val nome = input.text.toString().trim()
-                if (nome.isBlank()) return@setPositiveButton
-                lifecycleScope.launch {
-                    try {
-                        val api = RetrofitClient.build(session)
-                        val resp = api.criarOperador(OperadorRequest(nome))
-                        if (resp.isSuccessful) {
-                            Toast.makeText(this@OperadoresActivity, "Operador '$nome' adicionado", Toast.LENGTH_SHORT).show()
-                            carregarOperadores()
-                        } else {
-                            Toast.makeText(this@OperadoresActivity, "Erro ao adicionar", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        Toast.makeText(this@OperadoresActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
+        GlassDialog.input(
+            context = this,
+            title = "Novo Operador",
+            hint = "Nome do operador",
+            positiveText = "Adicionar"
+        ) { nome ->
+            if (nome.isBlank()) return@input
+            lifecycleScope.launch {
+                try {
+                    val api = RetrofitClient.build(session)
+                    val resp = api.criarOperador(OperadorRequest(nome))
+                    if (resp.isSuccessful) {
+                        Toast.makeText(this@OperadoresActivity, "Operador '$nome' adicionado", Toast.LENGTH_SHORT).show()
+                        carregarOperadores()
+                    } else {
+                        Toast.makeText(this@OperadoresActivity, "Erro ao adicionar", Toast.LENGTH_SHORT).show()
                     }
+                } catch (e: Exception) {
+                    Toast.makeText(this@OperadoresActivity, "Erro: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
     }
 
     private fun confirmarToggle(op: Operador) {
         val acao = if (op.ativo == 1) "desativar" else "reativar"
-        AlertDialog.Builder(this)
-            .setTitle("${acao.replaceFirstChar { it.uppercase() }} operador")
-            .setMessage("Deseja $acao '${op.nome}'?")
-            .setPositiveButton(acao.replaceFirstChar { it.uppercase() }) { _, _ ->
+        GlassDialog.show(
+            context = this,
+            title = "${acao.replaceFirstChar { it.uppercase() }} operador",
+            message = "Deseja $acao '${op.nome}'?",
+            positiveText = acao.replaceFirstChar { it.uppercase() },
+            negativeText = "Cancelar",
+            onPositive = {
                 lifecycleScope.launch {
                     try {
                         val api = RetrofitClient.build(session)
@@ -129,8 +126,7 @@ class OperadoresActivity : TimeoutActivity() {
                     }
                 }
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        )
     }
 
     override fun onSupportNavigateUp(): Boolean {

@@ -1,5 +1,12 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
+}
+
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
 }
 
 android {
@@ -10,12 +17,17 @@ android {
         applicationId = "br.com.inventario"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 20
+        versionName = "1.9.1"
 
         // Altere para o IP do servidor onde o backend FastAPI está rodando.
         // Use 10.0.2.2 para emulador Android (aponta para localhost da máquina).
         buildConfigField("String", "API_BASE_URL", "\"http://192.168.0.31:8000/\"")
+
+        // Token lido de local.properties (nunca commitar o token diretamente)
+        // Adicionar em local.properties: GITHUB_TOKEN=ghp_...
+        val githubToken = localProps.getProperty("GITHUB_TOKEN", "")
+        buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
     }
 
     buildTypes {

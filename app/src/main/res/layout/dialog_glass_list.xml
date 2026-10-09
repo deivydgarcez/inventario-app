@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_glass_dialog">
+
+    <TextView
+        android:id="@+id/dialogListTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="24dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="16dp"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@color/colorPrimaryText" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/glassDividerColor" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/dialogListContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp" />
+
+    </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/dialogListBtnRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="24dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="20dp"
+        android:visibility="gone">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/dialogListBtnNegative"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="Cancelar"
+            android:textColor="@color/colorPrimaryText"
+            android:elevation="0dp"
+            android:stateListAnimator="@null"
+            app:strokeColor="@color/glassCardBorder"
+            app:backgroundTint="#26FFFFFF"
+            app:cornerRadius="12dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

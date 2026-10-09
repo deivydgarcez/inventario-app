@@ -8,10 +8,10 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import br.com.inventario.ui.base.TimeoutActivity
+import br.com.inventario.util.GlassDialog
 import androidx.camera.core.*
 import androidx.camera.core.Camera
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -107,13 +107,13 @@ class RecontagemActivity : TimeoutActivity() {
     }
 
     private fun mostrarSeletorModo() {
-        AlertDialog.Builder(this)
-            .setTitle("Modo de leitura")
-            .setItems(arrayOf("Câmera do celular", "Leitor Bluetooth")) { _, which ->
-                aplicarModo(if (which == 0) ScanMode.CAMERA else ScanMode.BLUETOOTH)
-            }
-            .setCancelable(true)
-            .show()
+        GlassDialog.list(
+            context = this,
+            title = "Modo de leitura",
+            items = arrayOf("Câmera do celular", "Leitor Bluetooth")
+        ) { which ->
+            aplicarModo(if (which == 0) ScanMode.CAMERA else ScanMode.BLUETOOTH)
+        }
     }
 
     private fun aplicarModo(modo: ScanMode) {
@@ -232,26 +232,20 @@ class RecontagemActivity : TimeoutActivity() {
     }
 
     private fun digitarManualmente() {
-        val input = EditText(this).apply {
-            hint = "Digite o código de barras"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            setPadding(48, 32, 48, 32)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Código manual")
-            .setView(input)
-            .setPositiveButton("Buscar") { _, _ ->
-                val codigo = input.text.toString().trim()
-                if (codigo.length >= 3 && !processando) {
-                    processando = true
-                    binding.tvStatus.text = "Buscando: $codigo..."
-                    buscarERegistrar(codigo)
-                } else if (codigo.isNotEmpty() && codigo.length < 3) {
-                    Toast.makeText(this, "Código muito curto", Toast.LENGTH_SHORT).show()
-                }
+        GlassDialog.input(
+            context = this,
+            title = "Código manual",
+            hint = "Digite o código de barras",
+            positiveText = "Buscar"
+        ) { codigo ->
+            if (codigo.length >= 3 && !processando) {
+                processando = true
+                binding.tvStatus.text = "Buscando: $codigo..."
+                buscarERegistrar(codigo)
+            } else if (codigo.isNotEmpty() && codigo.length < 3) {
+                Toast.makeText(this, "Código muito curto", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
     }
 
     private fun carregarItens() {

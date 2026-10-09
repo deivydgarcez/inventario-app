@@ -3,13 +3,13 @@ package br.com.inventario.ui.usuarios
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import br.com.inventario.data.api.RetrofitClient
 import br.com.inventario.data.model.DispositivoInfo
 import br.com.inventario.databinding.ActivityDevicesBinding
 import br.com.inventario.ui.base.TimeoutActivity
+import br.com.inventario.util.GlassDialog
 import br.com.inventario.util.SessionManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -64,15 +64,15 @@ class DevicesActivity : TimeoutActivity() {
     }
 
     private fun confirmarRemocao(dispositivo: DispositivoInfo) {
-        AlertDialog.Builder(this)
-            .setTitle("Remover dispositivo")
-            .setMessage(
-                "Remover \"${dispositivo.nomeDispositivo ?: dispositivo.deviceId}\"?\n\n" +
-                "Esse aparelho precisará de um slot livre para fazer login novamente."
-            )
-            .setPositiveButton("Remover") { _, _ -> removerDispositivo(dispositivo) }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        GlassDialog.show(
+            context = this,
+            title = "Remover dispositivo",
+            message = "Remover \"${dispositivo.nomeDispositivo ?: dispositivo.deviceId}\"?\n\n" +
+                    "Esse aparelho precisará de um slot livre para fazer login novamente.",
+            positiveText = "Remover",
+            negativeText = "Cancelar",
+            onPositive = { removerDispositivo(dispositivo) }
+        )
     }
 
     private fun removerDispositivo(dispositivo: DispositivoInfo) {
