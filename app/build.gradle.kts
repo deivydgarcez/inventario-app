@@ -30,10 +30,20 @@ android {
         buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(localProps.getProperty("KEYSTORE_PATH", "release/invec-app.jks"))
+            storePassword = localProps.getProperty("KEYSTORE_PASS", "")
+            keyAlias = localProps.getProperty("KEY_ALIAS", "invec")
+            keyPassword = localProps.getProperty("KEY_PASS", "")
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = true       // obfuscação e remoção de código morto
-            isShrinkResources = true     // remove recursos não usados (imagens, strings)
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

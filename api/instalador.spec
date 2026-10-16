@@ -22,6 +22,12 @@ if os.path.exists(nssm_exe):
 else:
     print("AVISO: nssm.exe não encontrado na raiz. Baixe em https://nssm.cc e coloque aqui antes de compilar.")
 
+update_ps1 = 'update_server.ps1'
+if os.path.exists(update_ps1):
+    extra_datas.append((update_ps1, '.'))
+else:
+    print("AVISO: update_server.ps1 não encontrado — auto-update não será configurado.")
+
 a = Analysis(
     ['instalador.py'],
     pathex=['.'],
