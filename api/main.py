@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, depositos, produtos, inventario, operadores, sessao, dispositivos
 from app.migrations import run_migrations
 from app.licenca import validar_licenca
-from app.version import APP_VERSION
+from app.version import APP_VERSION, CHANGELOG
 
 
 @asynccontextmanager
@@ -48,7 +48,7 @@ def health():
 
 @app.get("/versao", tags=["Health"])
 def versao():
-    return {"versao": APP_VERSION}
+    return {"versao": APP_VERSION, "novidades": CHANGELOG.get(APP_VERSION, [])}
 
 
 @app.get("/ping", tags=["Health"])
