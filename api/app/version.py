@@ -1,6 +1,9 @@
-APP_VERSION = "1.9.3"
+APP_VERSION = "1.9.4"
 
 CHANGELOG = {
+    "1.9.4": [
+        "Endpoint /versao exibe novidades da versão atual no app",
+    ],
     "1.9.3": [
         "Auto-atualização automática do servidor (InvecAutoUpdate)",
         "Licença vinculada ao ID da máquina",
