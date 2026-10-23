@@ -804,7 +804,7 @@ def relatorio_inventario(
                 IT.OPERADOR
             FROM PRODUTO P
             JOIN INVENTARIO_TEMP IT
-                ON IT.CDPRODUTO = P.CDPRODUTO AND IT.CDDEPOSITO = ?
+                ON CAST(IT.CDPRODUTO AS INTEGER) = CAST(P.CDPRODUTO AS INTEGER) AND IT.CDDEPOSITO = ?
             WHERE 1=1 {session_filter}
             ORDER BY P.PRODUTO
             """,
@@ -1096,13 +1096,13 @@ def consolidar_inventario(
                     COALESCE(
                         (SELECT FIRST 1 PP3.VLCUSTO
                          FROM PRODUTOPRECO PP3
-                         WHERE PP3.CDPRODUTO = CAST(IT.CDPRODUTO AS VARCHAR(10))
+                         WHERE CAST(PP3.CDPRODUTO AS INTEGER) = CAST(IT.CDPRODUTO AS INTEGER)
                            AND PP3.CDUNIDADE = P.CDUNIDADE
                            AND PP3.IDPRECO   = P.IDPRECO),
                         0)                                       AS VLCUSTO,
                     IT.DATA_HORA_SCAN
                 FROM INVENTARIO_TEMP IT
-                JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO
+                JOIN PRODUTO P ON CAST(P.CDPRODUTO AS INTEGER) = CAST(IT.CDPRODUTO AS INTEGER)
                 WHERE IT.CDDEPOSITO = ? {session_where}
                 """,
                 itens_params,
@@ -1459,14 +1459,14 @@ def remover_bipagem(
         if session_id:
             cur.execute(
                 "SELECT IT.QTDE, P.PRODUTO FROM INVENTARIO_TEMP IT "
-                "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
+                "JOIN PRODUTO P ON CAST(P.CDPRODUTO AS INTEGER) = CAST(IT.CDPRODUTO AS INTEGER) "
                 "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ? AND IT.SESSION_ID = ?",
                 (cdproduto, cddeposito, session_id),
             )
         else:
             cur.execute(
                 "SELECT IT.QTDE, P.PRODUTO FROM INVENTARIO_TEMP IT "
-                "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
+                "JOIN PRODUTO P ON CAST(P.CDPRODUTO AS INTEGER) = CAST(IT.CDPRODUTO AS INTEGER) "
                 "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ? AND IT.SESSION_ID IS NULL",
                 (cdproduto, cddeposito),
             )
@@ -1512,14 +1512,14 @@ def editar_bipagem(
         if body.session_id:
             cur.execute(
                 "SELECT IT.QTDE, IT.QTDEATUAL_SNAP, P.PRODUTO FROM INVENTARIO_TEMP IT "
-                "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
+                "JOIN PRODUTO P ON CAST(P.CDPRODUTO AS INTEGER) = CAST(IT.CDPRODUTO AS INTEGER) "
                 "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ? AND IT.SESSION_ID = ?",
                 (cdproduto, body.cddeposito, body.session_id),
             )
         else:
             cur.execute(
                 "SELECT IT.QTDE, IT.QTDEATUAL_SNAP, P.PRODUTO FROM INVENTARIO_TEMP IT "
-                "JOIN PRODUTO P ON P.CDPRODUTO = IT.CDPRODUTO "
+                "JOIN PRODUTO P ON CAST(P.CDPRODUTO AS INTEGER) = CAST(IT.CDPRODUTO AS INTEGER) "
                 "WHERE IT.CDPRODUTO = ? AND IT.CDDEPOSITO = ? AND IT.SESSION_ID IS NULL",
                 (cdproduto, body.cddeposito),
             )

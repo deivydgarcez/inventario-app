@@ -1,6 +1,9 @@
-APP_VERSION = "1.9.4"
+APP_VERSION = "1.9.5"
 
 CHANGELOG = {
+    "1.9.5": [
+        "Correção: produtos com código iniciando em zero (ex: 000646) causavam erro ao editar/excluir",
+    ],
     "1.9.4": [
         "Endpoint /versao exibe novidades da versão atual no app",
     ],
