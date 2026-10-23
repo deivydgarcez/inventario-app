@@ -1,5 +1,19 @@
 # CHANGELOG — Invec API
 
+## [1.9.5] — 2026-10-23
+
+### Correções de bugs
+
+#### `app/routers/inventario.py`
+
+- **INV-S06 — produtos com código iniciando em zero causavam 404 ao editar/excluir**: `INVENTARIO_TEMP.CDPRODUTO` é `VARCHAR` no Automec. O backend inseria o código como inteiro (`646`), que o Firebird gravava como `'646'`. Os JOINs com a tabela `PRODUTO` comparavam `'646' = '000646'` (literal VARCHAR) → `FALSE` → 404 "Item não encontrado na contagem". Fix: todos os JOINs entre `INVENTARIO_TEMP` e `PRODUTO` alterados para `CAST(x AS INTEGER)` nos dois lados, eliminando a diferença de padding de zeros. Afeta: relatório, `editar_bipagem`, `remover_bipagem` e consolidação (VLCUSTO).
+
+#### `app/version.py`
+
+- Versão bumped: `1.9.4` → `1.9.5`
+
+---
+
 ## [1.3.2] — 2026-06-25
 
 ### Correções de bugs
