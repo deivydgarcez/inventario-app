@@ -8,7 +8,7 @@ $EnvFile     = Join-Path $InstallDir ".env"
 $VersionFile = Join-Path $InstallDir "server_version.txt"
 $ServiceName = "InvecAPI"
 $AssetName   = "InvecServidor.exe"
-$Repo        = "deivydgarcez/invec-releases"
+$Repo        = "mplarlon/invec-releases"
 
 New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir "logs") | Out-Null
 

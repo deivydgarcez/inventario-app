@@ -22,7 +22,7 @@ data class UpdateInfo(
 
 object UpdateChecker {
 
-    private const val REPO = "deivydgarcez/inventario-app"
+    private const val REPO = "mplarlon/invec-releases"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
