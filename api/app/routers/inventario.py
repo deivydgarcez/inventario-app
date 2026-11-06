@@ -478,7 +478,7 @@ def registrar_bipagem(
             "SELECT P.PRODUTO, "
             "(SELECT FIRST 1 M2.QTDEATUAL FROM MOVIMENTO M2 "
             " WHERE M2.CDPRODUTO = CAST(P.CDPRODUTO AS VARCHAR(10)) AND M2.CDDEPOSITO = ?) AS QTDEATUAL "
-            "FROM PRODUTO P WHERE P.CDPRODUTO = ?",
+            "FROM PRODUTO P WHERE CAST(P.CDPRODUTO AS INTEGER) = ?",
             (body.cddeposito, body.cdproduto),
         )
         row_prod = fetchone_as_dict(cur)
@@ -1081,14 +1081,14 @@ def consolidar_inventario(
                     IT.CDDEPOSITO,
                     IT.QTDE                                      AS QTDE_CONTADA,
                     IT.OPERADOR,
-                    CAST(IT.CDPRODUTO AS VARCHAR(10))            AS CDPRODUTO_STR,
+                    P.CDPRODUTO                                  AS CDPRODUTO_STR,
                     COALESCE(P.CDUNIDADE, 'UN')                  AS CDUNIDADE,
                     COALESCE(P.PRODUTO, '')                      AS PRODUTO,
                     IT.QTDEATUAL_SNAP,
                     COALESCE(
                         (SELECT FIRST 1 PP2.FATORCONV
                          FROM PRODUTOPRECO PP2
-                         WHERE PP2.CDPRODUTO = CAST(IT.CDPRODUTO AS VARCHAR(10))
+                         WHERE PP2.CDPRODUTO = P.CDPRODUTO
                            AND PP2.CDUNIDADE = P.CDUNIDADE
                            AND PP2.IDPRECO   = P.IDPRECO
                            AND PP2.FATORCONV > 0),
