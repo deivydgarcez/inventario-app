@@ -111,6 +111,8 @@ inventario-app/
 
 Em caso de sucesso retorna um JWT HS256 assinado com `JWT_SECRET` (definido no `.env`).
 
+A autorização do supervisor na consolidação segue a mesma regra de senha: aceita a `SENHAMOBILE` ou a `SENHA` do Automec. O hash bcrypt é feito com o pacote `bcrypt` direto (sem `passlib`, incompatível com `bcrypt >= 4.1`).
+
 **Payload do token:**
 ```json
 {

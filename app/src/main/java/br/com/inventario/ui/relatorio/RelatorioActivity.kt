@@ -669,9 +669,13 @@ class RelatorioActivity : TimeoutActivity() {
                     val detail = try {
                         org.json.JSONObject(errorBody).getString("detail")
                     } catch (_: Exception) { "Erro ao consolidar" }
-                    // Servidor exige supervisor (edições desta sessão) — abre dialog automaticamente
+                    // Servidor exige supervisor (edições desta sessão) — abre dialog automaticamente.
+                    // Só reabre se o supervisor AINDA não foi informado: se já veio login/senha e o
+                    // servidor recusou (ex.: "Supervisor precisa ser gerente"), mostra o motivo em vez
+                    // de pedir o login de novo (evita o loop relatado na Farol da Primavera, 09/11/2026).
                     // Admin/gerente não precisam de outro supervisor, mostra erro genérico se 403
-                    if (response.code() == 403 && detail.contains("Supervisor", ignoreCase = true) && !session.isSupervisor()) {
+                    if (response.code() == 403 && detail.contains("Supervisor", ignoreCase = true)
+                        && !session.isSupervisor() && supervisorLogin.isNullOrBlank()) {
                         pedirSupervisor()
                     } else {
                         Toast.makeText(this@RelatorioActivity, "$detail [INV-C01]", Toast.LENGTH_LONG).show()

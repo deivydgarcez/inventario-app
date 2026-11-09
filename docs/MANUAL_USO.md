@@ -518,7 +518,7 @@ flowchart TD
 
 1. Toque em **Consolidar Inventário**
 2. No diálogo, toque em **Consolidar agora**
-3. Preencha o **login** e **senha mobile** de um gerente ou admin
+3. Preencha o **login** e a **senha** de um gerente ou admin (vale a senha mobile ou a mesma senha do Automec)
 4. Toque em **Autorizar e Consolidar**
 
 > **Regra:** o supervisor precisa ser **diferente** do operador que fez a coleta. Gerentes e admins podem autorizar com as próprias credenciais.

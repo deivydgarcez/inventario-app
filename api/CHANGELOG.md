@@ -1,5 +1,31 @@
 # CHANGELOG — Invec API
 
+## [Não lançado] — 2026-11-09
+
+### Correções de bugs
+
+#### Loop de login do supervisor ao consolidar (Farol da Primavera)
+
+- **Sintoma:** ao consolidar uma contagem de operador com divergência, o app pedia login e senha do supervisor sem parar, sem mostrar erro.
+- **Causa 1 — senha mobile impossível de cadastrar:** `passlib 1.7.4` é incompatível com `bcrypt >= 4.1` (o build usava `bcrypt 5.0.0`). Todo hash/verificação dava `ValueError: password cannot be longer than 72 bytes`: o cadastro da senha mobile (`PUT /auth/usuarios/{id}/senha-mobile`) respondia 500 e a migration da senha padrão do MI falhava. Sem senha mobile, a autorização do supervisor respondia 403 "Supervisor não possui senha mobile configurada".
+- **Causa 2 — app:** qualquer 403 com "Supervisor" na mensagem reabria o diálogo de login, mesmo quando o supervisor já tinha sido informado.
+
+#### `app/security.py`, `app/migrations.py`, `requirements.txt`, `servidor.spec`
+
+- `passlib` removido; hash e verificação usam o pacote `bcrypt` direto (`hashpw`/`checkpw`, senha limitada a 72 bytes como o bcrypt exige). Hashes `$2b$` já gravados continuam válidos. Erro de hash malformado retorna "senha inválida" em vez de 500.
+- `requirements.txt`: `passlib[bcrypt]` → `bcrypt>=4.0.1`. `servidor.spec`: hidden imports trocados de `passlib` para `bcrypt`.
+
+#### `app/routers/inventario.py`
+
+- Autorização do supervisor (`/inventario/supervisor/pre-auth` e login/senha na consolidação) aceita a **senha mobile OU a senha do Automec** (`USUARIOS.SENHA`, mesma cifra `Code()` do login). Gerente/administrador do Automec autoriza sem precisar cadastrar senha mobile.
+- A regra de quem pode autorizar não mudou: só MI, gerente (grupo 2) ou administrador (grupo 1), diferente do operador. O supervisor continua registrado no `LOG_INVENTARIO` para auditoria.
+
+#### App Android — `RelatorioActivity.kt`
+
+- O diálogo de supervisor só reabre se ainda não foi informado supervisor. Se o servidor recusar as credenciais informadas, o motivo é exibido (`[INV-C01]`).
+
+---
+
 ## [1.9.5] — 2026-10-23
 
 ### Correções de bugs

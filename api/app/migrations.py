@@ -405,7 +405,7 @@ def _migrar_coluna(tabela: str, coluna: str, ddl: str):
 
 def _migrar_senha_mi_padrao():
     try:
-        from passlib.hash import bcrypt as _bcrypt
+        from app.security import hash_senha
         with get_connection() as con:
             cur = con.cursor()
             # Define senha padrão para MI se não tiver nenhuma
@@ -414,7 +414,7 @@ def _migrar_senha_mi_padrao():
             )
             row = cur.fetchone()
             if row is not None and not (row[0] or "").strip():
-                hash_padrao = _bcrypt.hash(SENHA_MI_PADRAO)
+                hash_padrao = hash_senha(SENHA_MI_PADRAO)
                 cur.execute(
                     "UPDATE USUARIOS SET SENHAMOBILE = ? WHERE UPPER(LOGIN) = 'MI'",
                     (hash_padrao,),
@@ -432,7 +432,7 @@ def _migrar_senha_mi_padrao():
                 try:
                     cur.execute(
                         "UPDATE USUARIOS SET SENHAMOBILE = ? WHERE IDUSUARIO = ?",
-                        (_bcrypt.hash(senha_plain), uid),
+                        (hash_senha(senha_plain), uid),
                     )
                     migrados += 1
                 except Exception:

@@ -10,7 +10,7 @@ datas = []
 
 # Pacotes que precisam de coleta especial
 for pkg in ['fastapi', 'uvicorn', 'starlette', 'pydantic', 'pydantic_core',
-            'anyio', 'python_jose', 'passlib', 'python_dotenv']:
+            'anyio', 'python_jose', 'bcrypt', 'python_dotenv']:
     try:
         hiddenimports += collect_submodules(pkg)
     except Exception:
@@ -48,7 +48,7 @@ a = Analysis(
         'cryptography.hazmat.primitives.asymmetric.rsa',
         'cryptography.hazmat.primitives.asymmetric.padding',
         'cryptography.hazmat.backends.openssl',
-        'passlib.handlers.bcrypt',
+        'bcrypt',
         'dotenv',
         'email_validator',
         'h11',

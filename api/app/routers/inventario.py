@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from app.database import get_connection, fetchall_as_dict, fetchone_as_dict
 from app.security import get_current_user, verificar_senhamobile
+from app.routers.auth import _automec_code
 from app.models.schemas import (
     BipagemRequest, BipagemResponse, EditarBipagemRequest,
     ItemRelatorio, ConsolidarRequest, ItemHistorico, LogItem, ResumoContagem,
@@ -252,6 +253,18 @@ def _verificar_acesso_deposito(current_user: dict, cddeposito: int) -> None:
             raise HTTPException(status_code=500, detail="Erro ao verificar permissão de depósito")
 
 
+def _senha_supervisor_ok(senha: str, usuario: dict | None) -> bool:
+    """Supervisor confirma com a senha mobile OU com a mesma senha do Automec
+    (USUARIOS.SENHA, cifra Code() do Delphi, igual ao login). Assim quem ja e
+    gerente/administrador no Automec autoriza sem precisar cadastrar senha mobile."""
+    if not usuario or not senha:
+        return False
+    if verificar_senhamobile(senha, usuario.get("senhamobile")):
+        return True
+    senha_automec = usuario.get("senha")
+    return bool(senha_automec) and senha_automec == _automec_code(senha)
+
+
 def _validar_supervisor_token(token: str) -> dict:
     """SEC-2: valida token de pré-autenticação do supervisor."""
     with _supervisor_tokens_lock:
@@ -294,13 +307,13 @@ def supervisor_pre_auth(
     with get_connection() as con:
         cur = con.cursor()
         cur.execute(
-            "SELECT IDUSUARIO, LOGIN, IDGRUPO, SENHAMOBILE FROM USUARIOS "
+            "SELECT IDUSUARIO, LOGIN, IDGRUPO, SENHAMOBILE, SENHA FROM USUARIOS "
             "WHERE LOWER(LOGIN) = LOWER(?) AND (INATIVO IS NULL OR INATIVO = 0)",
             (body.login,),
         )
         sup = fetchone_as_dict(cur)
 
-    credenciais_ok = sup and verificar_senhamobile(body.senha, sup.get("senhamobile"))
+    credenciais_ok = _senha_supervisor_ok(body.senha, sup)
 
     if not credenciais_ok:
         _sup_tentativas.setdefault(chave, []).append(agora)
@@ -1200,19 +1213,12 @@ def consolidar_inventario(
                         )
                 elif body.supervisor_login and body.supervisor_senha:
                     cur.execute(
-                        "SELECT IDUSUARIO, LOGIN, IDGRUPO, SENHAMOBILE FROM USUARIOS "
+                        "SELECT IDUSUARIO, LOGIN, IDGRUPO, SENHAMOBILE, SENHA FROM USUARIOS "
                         "WHERE LOWER(LOGIN) = LOWER(?) AND (INATIVO IS NULL OR INATIVO = 0)",
                         (body.supervisor_login,),
                     )
                     supervisor = fetchone_as_dict(cur)
-                    if not supervisor:
-                        raise HTTPException(status_code=401, detail="Credenciais do supervisor inválidas")
-                    if not supervisor.get("senhamobile"):
-                        raise HTTPException(
-                            status_code=403,
-                            detail="Supervisor não possui senha mobile configurada.",
-                        )
-                    if not verificar_senhamobile(body.supervisor_senha, supervisor.get("senhamobile")):
+                    if not _senha_supervisor_ok(body.supervisor_senha, supervisor):
                         raise HTTPException(status_code=401, detail="Credenciais do supervisor inválidas")
                     is_mi_sup = supervisor.get("login", "").upper() == "MI"
                     if not is_mi_sup and (supervisor.get("idgrupo") or 3) not in (1, 2):
