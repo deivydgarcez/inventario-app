@@ -17,8 +17,8 @@ android {
         applicationId = "br.com.inventario"
         minSdk = 26
         targetSdk = 37
-        versionCode = 20
-        versionName = "1.9.1"
+        versionCode = 21
+        versionName = "1.9.8"
 
         // Altere para o IP do servidor onde o backend FastAPI está rodando.
         // Use 10.0.2.2 para emulador Android (aponta para localhost da máquina).

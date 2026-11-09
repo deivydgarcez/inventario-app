@@ -1,6 +1,6 @@
 # CHANGELOG — Invec API
 
-## [Não lançado] — 2026-11-09
+## [1.9.8] — 2026-11-09
 
 ### Correções de bugs
 
@@ -23,6 +23,23 @@
 #### App Android — `RelatorioActivity.kt`
 
 - O diálogo de supervisor só reabre se ainda não foi informado supervisor. Se o servidor recusar as credenciais informadas, o motivo é exibido (`[INV-C01]`).
+
+#### Versões
+
+- API: `1.9.7` → `1.9.8` (`app/version.py`).
+- App Android: `1.9.1` (versionCode 20) → `1.9.8` (versionCode 21), alinhado com a API e com a tag da release. O auto-update compara a tag da release com o `versionName` do app.
+
+---
+
+## [1.9.7] — 2026-11-06
+
+- Consolidação falhava com erro de chave estrangeira (`FK_MP_PRODUTO`) para produtos com `CDPRODUTO` iniciando em zero (ex.: 002460, Louzadão). Commit `8811f34`.
+
+---
+
+## [1.9.6] — 2026-11-05
+
+- Produtos com código iniciando em zero não eram registrados na bipagem (relatório vazio).
 
 ---
 
